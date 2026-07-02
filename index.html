@@ -1769,6 +1769,7 @@
       };
       const STORAGE = "readpage_shelf_v2",
         ACTIVITY_STORAGE = "readpage_activity_v1",
+        CHATS_STORAGE = "readpage_chats_v1",
         followUps = [
           "这和现实生活有什么关系？",
           "能换一个角度解释吗？",
@@ -1824,6 +1825,53 @@
       }
       function saveShelf() {
         localStorage.setItem(STORAGE, JSON.stringify(state.books));
+      }
+      function loadChats() {
+        let raw = {};
+        try {
+          raw = JSON.parse(localStorage.getItem(CHATS_STORAGE) || "{}");
+        } catch (e) {
+          raw = {};
+        }
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
+        Object.entries(raw).forEach(([key, session]) => {
+          if (
+            !key.includes("::") ||
+            !session ||
+            typeof session !== "object" ||
+            !Array.isArray(session.messages)
+          )
+            return;
+          const messages = session.messages
+            .filter(
+              (message) =>
+                message &&
+                (message.role === "ai" || message.role === "user") &&
+                typeof message.text === "string"
+            )
+            .map((message) => ({
+              role: message.role,
+              text: message.text,
+            }));
+          if (!messages.length) return;
+          state.chats[key] = {
+            messages,
+            first:
+              typeof session.first === "boolean"
+                ? session.first
+                : !messages.some((message) => message.role === "user"),
+            replyIndex: Math.max(0, Number(session.replyIndex) || 0),
+          };
+        });
+      }
+      function saveChats() {
+        try {
+          localStorage.setItem(CHATS_STORAGE, JSON.stringify(state.chats));
+          return true;
+        } catch (e) {
+          toast("聊天记录保存失败，请检查浏览器存储空间");
+          return false;
+        }
       }
       function localDate(date = new Date()) {
         const y = date.getFullYear(),
@@ -2065,7 +2113,7 @@
         $("#chatView").classList.toggle("active", chatting);
         $("#backBtn").classList.toggle("hidden", !chatting);
         $("#subtitle").textContent = chatting
-          ? "你的每段讨论都会在本次访问中保留"
+          ? "你的每段讨论都会自动保存"
           : "从一个感兴趣的问题开始";
         if (chatting) restoreChat(qid);
       }
@@ -2075,7 +2123,7 @@
         state.activeQuestions[b.id] = qid;
         state.bookViews[b.id] = true;
         const key = chatKey(qid);
-        if (!state.chats[key])
+        if (!state.chats[key]) {
           state.chats[key] = {
             messages: [
               {
@@ -2086,6 +2134,8 @@
             first: true,
             replyIndex: 0,
           };
+          saveChats();
+        }
         renderQuestions();
         renderView();
         setTimeout(() => $("#input").focus(), 100);
@@ -2154,6 +2204,7 @@
           q = b.questions.find((x) => x.id === qid);
         recordSubmission();
         session.messages.push({ role: "user", text: value });
+        saveChats();
         $("#messages").insertAdjacentHTML(
           "beforeend",
           messageHTML("user", value)
@@ -2171,6 +2222,7 @@
           $("#messages").lastElementChild.remove();
           const answer = replyFor(q, value, session);
           session.messages.push({ role: "ai", text: answer });
+          saveChats();
           $("#messages").insertAdjacentHTML(
             "beforeend",
             messageHTML("ai", answer)
@@ -2460,6 +2512,7 @@
       });
       loadShelf();
       loadActivity();
+      loadChats();
       render();
     </script>
   </body>
