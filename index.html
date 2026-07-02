@@ -90,6 +90,7 @@
     .progress-bar { width: 68%; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--primary), #8c83f7); }
 
     .workspace { min-height: 720px; overflow: hidden; }
+    .workspace-body { display: block; min-height: 650px; }
     .workspace-header { display: flex; justify-content: space-between; align-items: center; padding: 25px 28px 20px; border-bottom: 1px solid var(--line); }
     .workspace-header h2 { margin: 0; font-size: 21px; letter-spacing: -.02em; }
     .workspace-header p { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
@@ -103,11 +104,25 @@
     .questions { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     .question-card { position: relative; min-height: 150px; padding: 19px; text-align: left; border: 1px solid var(--line); border-radius: 17px; background: rgba(255,255,255,.7); cursor: pointer; transition: transform .22s, border-color .22s, box-shadow .22s; }
     .question-card:hover { transform: translateY(-3px); border-color: #c9c5fb; box-shadow: 0 14px 28px rgba(55, 48, 137, .09); }
+    .question-card.active { border-color: var(--primary); background: var(--primary-soft); box-shadow: 0 10px 24px rgba(96, 87, 231, .12); }
     .question-number { display: grid; place-items: center; width: 29px; height: 29px; margin-bottom: 17px; border-radius: 9px; color: var(--primary); background: var(--primary-soft); font-size: 12px; font-weight: 750; }
     .question-card strong { display: block; padding-right: 28px; font-size: 15px; line-height: 1.55; }
     .question-card small { display: block; margin-top: 7px; color: var(--muted); }
     .question-arrow { position: absolute; top: 20px; right: 18px; color: #aaaec0; font-size: 19px; transition: .2s; }
     .question-card:hover .question-arrow { color: var(--primary); transform: translateX(3px); }
+
+    .workspace.chatting .workspace-body { display: grid; grid-template-columns: 226px minmax(0, 1fr); min-height: 720px; }
+    .workspace.chatting .question-view { padding: 18px 14px; border-right: 1px solid var(--line); background: rgba(249,249,253,.62); }
+    .workspace.chatting .question-view > .intro-badge,
+    .workspace.chatting .question-view > h3,
+    .workspace.chatting .question-view > p { display: none; }
+    .workspace.chatting .questions { grid-template-columns: 1fr; gap: 9px; }
+    .workspace.chatting .question-card { min-height: 0; padding: 14px 12px; border-radius: 13px; }
+    .workspace.chatting .question-card:hover { transform: translateX(2px); }
+    .workspace.chatting .question-number { width: 25px; height: 25px; margin-bottom: 10px; }
+    .workspace.chatting .question-card strong { padding-right: 13px; font-size: 12px; line-height: 1.5; }
+    .workspace.chatting .question-card small { margin-top: 5px; font-size: 10px; }
+    .workspace.chatting .question-arrow { display: none; }
 
     .chat-view { display: none; flex-direction: column; height: 720px; }
     .chat-view.active { display: flex; }
@@ -154,6 +169,7 @@
       .book-meta { padding: 10px 4px 0; }
       .workspace { min-height: auto; }
       .chat-view { height: 690px; }
+      .workspace.chatting .workspace-body { grid-template-columns: 210px minmax(0, 1fr); min-height: 690px; }
     }
 
     @media (max-width: 560px) {
@@ -180,7 +196,13 @@
       .question-view h3 { font-size: 26px; }
       .questions { grid-template-columns: 1fr; }
       .question-card { min-height: 126px; }
-      .chat-view { height: calc(100vh - 98px); min-height: 580px; }
+      .workspace.chatting .workspace-body { display: flex; flex-direction: column; min-height: 0; }
+      .workspace.chatting .question-view { flex: 0 0 auto; padding: 11px 12px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .workspace.chatting .questions { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 3px; scrollbar-width: none; }
+      .workspace.chatting .question-card { flex: 0 0 178px; min-height: 92px; padding: 11px; }
+      .workspace.chatting .question-number { margin-bottom: 7px; }
+      .workspace.chatting .question-card strong { display: -webkit-box; overflow: hidden; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+      .chat-view { height: calc(100vh - 245px); min-height: 480px; }
       .chat-topic { padding: 13px 17px; }
       .messages { padding: 20px 16px; }
       .bubble { max-width: 86%; }
@@ -222,24 +244,26 @@
           <button class="ghost-btn hidden" id="resetBtn" type="button" title="重新选题"><span aria-hidden="true">↻</span><span>重新选题</span></button>
         </header>
 
-        <div class="question-view" id="questionView">
-          <span class="intro-badge">✦ AI 为你准备了 4 个问题</span>
-          <h3>阅读不止于合上书页</h3>
-          <p>选择一个触动你的问题。这里没有标准答案，只有值得展开的想法。</p>
-          <div class="questions" id="questionList"></div>
-        </div>
+        <div class="workspace-body">
+          <div class="question-view" id="questionView">
+            <span class="intro-badge">✦ AI 为你准备了 4 个问题</span>
+            <h3>阅读不止于合上书页</h3>
+            <p>选择一个触动你的问题。这里没有标准答案，只有值得展开的想法。</p>
+            <div class="questions" id="questionList"></div>
+          </div>
 
-        <div class="chat-view" id="chatView">
-          <div class="chat-topic"><span>正在讨论</span><p id="activeQuestion"></p></div>
-          <div class="messages" id="messages"></div>
-          <div class="suggestions" id="suggestions" aria-label="快捷追问"></div>
-          <form class="composer" id="composer">
-            <textarea id="messageInput" rows="1" maxlength="500" placeholder="写下你的理解……" aria-label="聊天输入框"></textarea>
-            <div class="composer-footer">
-              <span class="composer-hint">Enter 发送 · Shift + Enter 换行</span>
-              <button class="send-btn" id="sendBtn" type="submit" disabled>发送 <span aria-hidden="true">↑</span></button>
-            </div>
-          </form>
+          <div class="chat-view" id="chatView">
+            <div class="chat-topic"><span>正在讨论</span><p id="activeQuestion"></p></div>
+            <div class="messages" id="messages"></div>
+            <div class="suggestions" id="suggestions" aria-label="快捷追问"></div>
+            <form class="composer" id="composer">
+              <textarea id="messageInput" rows="1" maxlength="500" placeholder="写下你的理解……" aria-label="聊天输入框"></textarea>
+              <div class="composer-footer">
+                <span class="composer-hint">Enter 发送 · Shift + Enter 换行</span>
+                <button class="send-btn" id="sendBtn" type="submit" disabled>发送 <span aria-hidden="true">↑</span></button>
+              </div>
+            </form>
+          </div>
         </div>
       </section>
     </div>
@@ -283,7 +307,8 @@
       state.firstReply = true;
       state.replyIndex = 0;
       messages.innerHTML = "";
-      questionView.classList.add("hidden");
+      $(".workspace").classList.add("chatting");
+      document.querySelectorAll(".question-card").forEach(card => card.classList.toggle("active", Number(card.dataset.id) === id));
       chatView.classList.add("active");
       $("#resetBtn").classList.remove("hidden");
       $("#headerSubtitle").textContent = "先写下你的想法，AI 会陪你一起展开";
@@ -350,7 +375,8 @@
       state.busy = false;
       messages.innerHTML = "";
       input.value = "";
-      questionView.classList.remove("hidden");
+      $(".workspace").classList.remove("chatting");
+      document.querySelectorAll(".question-card").forEach(card => card.classList.remove("active"));
       chatView.classList.remove("active");
       $("#resetBtn").classList.add("hidden");
       $("#headerSubtitle").textContent = "从一个感兴趣的问题开始";
