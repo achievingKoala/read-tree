@@ -99,6 +99,28 @@
       box-shadow: 0 0 0 5px rgba(49, 191, 124, .1)
     }
 
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px
+    }
+
+    .records-nav {
+      padding: 9px 13px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      color: var(--primary-dark);
+      background: rgba(255, 255, 255, .8);
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer
+    }
+
+    .records-nav:hover {
+      border-color: #bdb8f5;
+      background: var(--soft)
+    }
+
     .layout {
       display: grid;
       grid-template-columns: 300px minmax(0, 1fr);
@@ -112,6 +134,166 @@
       background: rgba(255, 255, 255, .88);
       box-shadow: var(--shadow);
       backdrop-filter: blur(16px)
+    }
+
+    .records-page {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 28px
+    }
+
+    .records-head,
+    .records-summary,
+    .history-head,
+    .history-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between
+    }
+
+    .records-head h1 {
+      margin: 0 0 6px;
+      font-size: 25px
+    }
+
+    .records-head p,
+    .history-empty {
+      margin: 0;
+      color: var(--muted);
+      font-size: 13px
+    }
+
+    .records-summary {
+      align-items: stretch;
+      gap: 14px;
+      margin-top: 25px
+    }
+
+    .record-card {
+      flex: 1;
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: 17px;
+      background: #fbfbfe
+    }
+
+    .record-card small {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700
+    }
+
+    .record-card strong {
+      display: block;
+      margin-top: 8px;
+      font-size: 28px
+    }
+
+    .record-progress {
+      height: 7px;
+      margin-top: 14px;
+      overflow: hidden;
+      border-radius: 9px;
+      background: #e9e9f1
+    }
+
+    .record-progress i {
+      display: block;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--primary), #9189f8)
+    }
+
+    .goal-form {
+      display: flex;
+      align-items: end;
+      gap: 8px
+    }
+
+    .goal-field {
+      display: grid;
+      gap: 6px
+    }
+
+    .goal-field label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700
+    }
+
+    .goal-field input {
+      width: 88px;
+      padding: 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      outline: 0
+    }
+
+    .history-section {
+      margin-top: 28px;
+      padding-top: 22px;
+      border-top: 1px solid var(--line)
+    }
+
+    .history-head h2 {
+      margin: 0;
+      font-size: 17px
+    }
+
+    .history-head span {
+      color: var(--muted);
+      font-size: 11px
+    }
+
+    .history-list {
+      display: grid;
+      gap: 9px;
+      margin-top: 14px
+    }
+
+    .history-row {
+      gap: 14px;
+      padding: 13px 15px;
+      border: 1px solid var(--line);
+      border-radius: 13px
+    }
+
+    .history-date strong,
+    .history-date small {
+      display: block
+    }
+
+    .history-date small {
+      margin-top: 3px;
+      color: var(--muted);
+      font-size: 10px
+    }
+
+    .history-count {
+      margin-left: auto;
+      font-size: 13px;
+      font-weight: 700
+    }
+
+    .history-state {
+      min-width: 52px;
+      padding: 5px 8px;
+      border-radius: 8px;
+      color: #8b681b;
+      background: #fff5d9;
+      font-size: 10px;
+      font-weight: 800;
+      text-align: center
+    }
+
+    .history-state.done {
+      color: #17734a;
+      background: #e4f8ed
+    }
+
+    .load-more {
+      display: block;
+      margin: 16px auto 0
     }
 
     .library {
@@ -1073,6 +1255,23 @@
         display: none
       }
 
+      .top-actions {
+        gap: 8px
+      }
+
+      .records-page {
+        padding: 20px 15px
+      }
+
+      .records-head {
+        align-items: flex-start;
+        gap: 18px
+      }
+
+      .records-summary {
+        flex-direction: column
+      }
+
       .library {
         padding: 14px;
         border-radius: 18px
@@ -1203,9 +1402,12 @@
               d="M5 5.5A2.5 2.5 0 0 1 7.5 3H11v16H7.5A2.5 2.5 0 0 0 5 21.5v-16Zm14 0A2.5 2.5 0 0 0 16.5 3H13v16h3.5a2.5 2.5 0 0 1 2.5 2.5v-16Z"
               stroke="currentColor" stroke-width="1.7" />
           </svg></span>读页</div>
-      <div class="status"><span class="status-dot"></span><span>AI 阅读伙伴在线</span></div>
+      <div class="top-actions">
+        <div class="status"><span class="status-dot"></span><span>AI 阅读伙伴在线</span></div>
+        <button class="records-nav" id="recordsNav">阅读记录</button>
+      </div>
     </header>
-    <div class="layout">
+    <div class="layout" id="readingView">
       <aside class="panel library">
         <div class="library-head">
           <h2>我的书架</h2><button class="add-btn" id="openModal" title="添加图书" aria-label="添加图书">＋</button>
@@ -1264,6 +1466,25 @@
         </div>
       </section>
     </div>
+    <section class="panel records-page hidden" id="recordsView">
+      <div class="records-head">
+        <div><h1>阅读记录</h1><p>每一次认真作答，都在让阅读变得更深。</p></div>
+        <form class="goal-form" id="goalForm">
+          <div class="goal-field"><label for="goalInput">每日目标</label><input id="goalInput" type="number" min="1" max="99" required></div>
+          <button class="primary-btn" type="submit">保存目标</button>
+        </form>
+      </div>
+      <div class="records-summary">
+        <article class="record-card"><small>今日提交</small><strong id="todayCount">0 / 5</strong><div class="record-progress"><i id="todayProgress"></i></div></article>
+        <article class="record-card"><small>连续达标</small><strong><span id="streakCount">0</span> 天</strong></article>
+        <article class="record-card"><small>累计提交</small><strong id="totalCount">0</strong></article>
+      </div>
+      <div class="history-section">
+        <div class="history-head"><h2>每日记录</h2><span id="historyTotal"></span></div>
+        <div class="history-list" id="historyList"></div>
+        <button class="secondary-btn load-more hidden" id="loadMore">查看更早记录</button>
+      </div>
+    </section>
   </main>
 
   <dialog id="bookModal">
@@ -1328,11 +1549,21 @@
           { id: "love", tag: "人性与权力", text: "温斯顿与朱莉娅的关系为什么具有反抗意义？", prompt: "私人感情为何会威胁一个要求绝对忠诚的体制？", answer: "私人感情创造了不受权力完全支配的忠诚与意义。它让个体把另一个具体的人置于抽象体制之前，因此天然构成边界与反抗。" }]
       }
     };
-    const STORAGE = "readpage_shelf_v2", followUps = ["这和现实生活有什么关系？", "能换一个角度解释吗？", "书中还有哪些细节？"];
+    const STORAGE = "readpage_shelf_v2", ACTIVITY_STORAGE = "readpage_activity_v1", followUps = ["这和现实生活有什么关系？", "能换一个角度解释吗？", "书中还有哪些细节？"];
     const state = { books: [], activeBookId: null, activeQuestions: {}, bookViews: {}, chats: {}, busy: false };
+    const activity = { dailyGoal: 5, pendingGoal: null, days: {} };
+    let currentPage = "reading", visibleHistory = 30;
     const $ = s => document.querySelector(s), clone = o => JSON.parse(JSON.stringify(o));
     function loadShelf() { let raw; try { raw = JSON.parse(localStorage.getItem(STORAGE) || "[]") } catch (e) { raw = [] } if (!Array.isArray(raw) || !raw.length) raw = [{ id: "prince", source: "preset" }]; state.books = raw.map(x => { if (x.source === "preset" && PRESETS[x.id]) { const base = clone(PRESETS[x.id]), generated = Array.isArray(x.questions) ? x.questions.filter(q => q.generationSource === "mock") : []; base.questions.push(...generated); base.currentChapter = x.currentChapter || null; base.generatedChapters = Array.isArray(x.generatedChapters) ? x.generatedChapters : []; return base } return { ...x, currentChapter: x.currentChapter || null, generatedChapters: Array.isArray(x.generatedChapters) ? x.generatedChapters : [], questions: Array.isArray(x.questions) ? x.questions : [] } }).filter(x => x && x.id); state.activeBookId = state.books[0].id }
     function saveShelf() { localStorage.setItem(STORAGE, JSON.stringify(state.books)) }
+    function localDate(date = new Date()) { const y = date.getFullYear(), m = String(date.getMonth() + 1).padStart(2, "0"), d = String(date.getDate()).padStart(2, "0"); return `${y}-${m}-${d}` }
+    function loadActivity() { let raw = {}; try { raw = JSON.parse(localStorage.getItem(ACTIVITY_STORAGE) || "{}") } catch (e) { raw = {} } activity.dailyGoal = Number.isInteger(raw.dailyGoal) && raw.dailyGoal > 0 ? Math.min(raw.dailyGoal, 99) : 5; activity.pendingGoal = null; activity.days = raw.days && typeof raw.days === "object" && !Array.isArray(raw.days) ? raw.days : {}; Object.keys(activity.days).forEach(date => { const item = activity.days[date]; if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !item || typeof item !== "object") { delete activity.days[date]; return } item.count = Math.max(0, Number(item.count) || 0); item.goal = Math.max(1, Number(item.goal) || activity.dailyGoal) }) }
+    function saveActivity() { localStorage.setItem(ACTIVITY_STORAGE, JSON.stringify(activity)) }
+    function recordSubmission() { const today = localDate(); if (!activity.days[today]) activity.days[today] = { count: 0, goal: activity.dailyGoal }; activity.days[today].count++; saveActivity(); if (currentPage === "records") renderRecords() }
+    function calculateStreak() { const today = new Date(), todayItem = activity.days[localDate(today)]; if (!todayItem || todayItem.count < todayItem.goal) today.setDate(today.getDate() - 1); let streak = 0; while (true) { const item = activity.days[localDate(today)]; if (!item || item.count < item.goal) break; streak++; today.setDate(today.getDate() - 1) } return streak }
+    function formatRecordDate(key) { const [y, m, d] = key.split("-").map(Number), date = new Date(y, m - 1, d); return date.toLocaleDateString("zh-CN", { month: "long", day: "numeric", weekday: "short" }) }
+    function renderRecords() { const today = localDate(), todayItem = activity.days[today] || { count: 0, goal: activity.dailyGoal }, dates = Object.keys(activity.days).sort((a, b) => b.localeCompare(a)), shown = dates.slice(0, visibleHistory), total = dates.reduce((sum, date) => sum + activity.days[date].count, 0); $("#goalInput").value = activity.dailyGoal; $("#todayCount").textContent = `${todayItem.count} / ${todayItem.goal}`; $("#todayProgress").style.width = `${Math.min(100, todayItem.count / todayItem.goal * 100)}%`; $("#streakCount").textContent = calculateStreak(); $("#totalCount").textContent = total; $("#historyTotal").textContent = dates.length ? `共 ${dates.length} 天` : "尚无记录"; $("#historyList").innerHTML = shown.length ? shown.map(date => { const item = activity.days[date], done = item.count >= item.goal; return `<div class="history-row"><div class="history-date"><strong>${formatRecordDate(date)}</strong><small>${date}</small></div><span class="history-count">${item.count} / ${item.goal} 次</span><span class="history-state ${done ? "done" : ""}">${done ? "已达标" : "进行中"}</span></div>` }).join("") : '<p class="history-empty">发送第一条阅读回答后，这里就会留下记录。</p>'; $("#loadMore").classList.toggle("hidden", shown.length >= dates.length) }
+    function showPage(page) { currentPage = page; const records = page === "records"; $("#readingView").classList.toggle("hidden", records); $("#recordsView").classList.toggle("hidden", !records); $("#recordsNav").textContent = records ? "返回书架" : "阅读记录"; if (records) { visibleHistory = 30; renderRecords() } }
     function book() { return state.books.find(b => b.id === state.activeBookId) } function chatKey(qid) { return `${state.activeBookId}::${qid}` }
     function hasBookHistory(id) { return Object.keys(state.chats).some(k => k.startsWith(id + "::") && state.chats[k].messages.length > 1) }
     function render() { const b = book(), progress = b.currentChapter ? Math.round(b.currentChapter / 30 * 100) : 0; $("#cover").style.setProperty("--theme", b.theme); $("#coverKicker").textContent = b.kicker || "MY READING"; $("#coverTitle").textContent = b.title; $("#coverAuthor").textContent = b.author || "作者未填写"; $("#coverSymbol").textContent = b.symbol || "✦"; $("#bookDescription").textContent = b.description || "这本书还没有简介。"; $("#progressText").textContent = b.currentChapter ? `第 ${b.currentChapter} 章 / 30` : "尚未选择"; $("#progressBar").style.width = `${progress}%`; $("#workspaceTitle").textContent = `和《${b.title}》聊一聊`; renderShelf(); renderQuestions(); renderView() }
@@ -1344,7 +1575,7 @@
     function messageHTML(role, text, thinking = false) { return `<div class="message ${role}">${role === "ai" ? '<div class="avatar">✦</div>' : ""}<div class="bubble">${thinking ? '<span class="thinking"><i></i><i></i><i></i></span>' : escapeHtml(text)}</div></div>` }
     function renderSuggestions(items) { $("#suggestions").innerHTML = items.map(x => `<button class="suggestion" data-suggestion="${escapeHtml(x)}">${escapeHtml(x)}</button>`).join("") }
     function replyFor(q, text, session) { const t = text.toLowerCase(); if (session.first) { session.first = false; return q.answer } if (t.includes("现实") || t.includes("生活")) return `放到现实中看，“${q.tag}”并不只存在于书里。我们每天如何相信、选择和建立关系，都在重复这个问题。你可以试着找一个最近亲身经历的例子。`; if (t.includes("角度")) return `换一个角度，先不判断作者是否正确，而是问：如果故事中的人做出相反选择，会失去什么、又会得到什么？这个反事实问题常常能照亮作者真正关心的部分。`; if (t.includes("细节") || t.includes("书中")) return `可以留意人物前后态度的变化、反复出现的意象，以及叙述者刻意强调的对比。这些细节共同支撑了“${q.tag}”这一主题。`; session.replyIndex++; return `你的理解抓住了一个重要入口。${q.answer.split("。")[0]}。如果再往前一步，你觉得作者是在给出答案，还是邀请读者保持警惕？` }
-    function send(text) { const value = text.trim(), b = book(), qid = state.activeQuestions[b.id]; if (!value || state.busy || !qid) return; const session = state.chats[chatKey(qid)], q = b.questions.find(x => x.id === qid); session.messages.push({ role: "user", text: value }); $("#messages").insertAdjacentHTML("beforeend", messageHTML("user", value)); $("#input").value = ""; state.busy = true; $("#sendBtn").disabled = true; $("#suggestions").innerHTML = ""; $("#messages").insertAdjacentHTML("beforeend", messageHTML("ai", "", true)); $("#messages").scrollTop = $("#messages").scrollHeight; setTimeout(() => { $("#messages").lastElementChild.remove(); const answer = replyFor(q, value, session); session.messages.push({ role: "ai", text: answer }); $("#messages").insertAdjacentHTML("beforeend", messageHTML("ai", answer)); state.busy = false; renderSuggestions(followUps); renderQuestions(); renderShelf(); $("#input").placeholder = "继续追问，或分享新的想法……"; $("#input").focus(); $("#messages").scrollTop = $("#messages").scrollHeight }, 700) }
+    function send(text) { const value = text.trim(), b = book(), qid = state.activeQuestions[b.id]; if (!value || state.busy || !qid) return; const session = state.chats[chatKey(qid)], q = b.questions.find(x => x.id === qid); recordSubmission(); session.messages.push({ role: "user", text: value }); $("#messages").insertAdjacentHTML("beforeend", messageHTML("user", value)); $("#input").value = ""; state.busy = true; $("#sendBtn").disabled = true; $("#suggestions").innerHTML = ""; $("#messages").insertAdjacentHTML("beforeend", messageHTML("ai", "", true)); $("#messages").scrollTop = $("#messages").scrollHeight; setTimeout(() => { $("#messages").lastElementChild.remove(); const answer = replyFor(q, value, session); session.messages.push({ role: "ai", text: answer }); $("#messages").insertAdjacentHTML("beforeend", messageHTML("ai", answer)); state.busy = false; renderSuggestions(followUps); renderQuestions(); renderShelf(); $("#input").placeholder = "继续追问，或分享新的想法……"; $("#input").focus(); $("#messages").scrollTop = $("#messages").scrollHeight }, 700) }
     function switchBook(id) { state.activeBookId = id; render() }
     function renderPresetGrid() { $("#presetGrid").innerHTML = Object.values(PRESETS).map(b => { const added = state.books.some(x => x.id === b.id); return `<button class="preset-card" data-add-preset="${b.id}" ${added ? "disabled" : ""}><span class="preset-cover" style="--theme:${b.theme}">${b.title[0]}</span><span><strong>${b.title}</strong><small>${added ? "已在书架中" : b.author}</small></span></button>` }).join("") }
     function addPreset(id) { if (state.books.some(b => b.id === id)) return toast("这本书已经在书架中了"); state.books.push(clone(PRESETS[id])); state.activeBookId = id; saveShelf(); $("#bookModal").close(); render(); toast("已加入书架") }
@@ -1363,7 +1594,8 @@
     $("#shelf").addEventListener("click", e => { const b = e.target.closest("[data-book]"); if (b) switchBook(b.dataset.book) }); $("#questions").addEventListener("click", e => { const q = e.target.closest("[data-question]"); if (q) openQuestion(q.dataset.question) }); $("#backBtn").addEventListener("click", () => { state.bookViews[state.activeBookId] = false; renderView() }); $("#composer").addEventListener("submit", e => { e.preventDefault(); send($("#input").value) }); $("#input").addEventListener("input", e => { $("#sendBtn").disabled = state.busy || !e.target.value.trim(); e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 110) + "px" }); $("#input").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(e.target.value) } }); $("#suggestions").addEventListener("click", e => { const b = e.target.closest("[data-suggestion]"); if (b) send(b.dataset.suggestion) });
     $("#openModal").addEventListener("click", () => { renderPresetGrid(); $("#bookModal").showModal() }); $("#closeModal").addEventListener("click", () => $("#bookModal").close()); $("#bookModal").addEventListener("click", e => { if (e.target === $("#bookModal")) $("#bookModal").close() }); document.querySelectorAll(".tab-btn").forEach(btn => btn.addEventListener("click", () => { document.querySelectorAll(".tab-btn").forEach(x => x.classList.toggle("active", x === btn)); $("#presetPane").classList.toggle("hidden", btn.dataset.tab !== "preset"); $("#customPane").classList.toggle("hidden", btn.dataset.tab !== "custom") })); $("#presetGrid").addEventListener("click", e => { const b = e.target.closest("[data-add-preset]"); if (b) addPreset(b.dataset.addPreset) }); $("#customPane").addEventListener("submit", addCustom);
     $("#openChapter").addEventListener("click", openChapterModal); $("#emptyChapter").addEventListener("click", openChapterModal); $("#closeChapter").addEventListener("click", () => $("#chapterModal").close()); $("#cancelChapter").addEventListener("click", () => $("#chapterModal").close()); $("#chapterForm").addEventListener("submit", submitChapter); $("#chapterModal").addEventListener("click", e => { if (e.target === $("#chapterModal")) $("#chapterModal").close() });
-    loadShelf(); render();
+    $("#recordsNav").addEventListener("click", () => showPage(currentPage === "records" ? "reading" : "records")); $("#loadMore").addEventListener("click", () => { visibleHistory += 30; renderRecords() }); $("#goalForm").addEventListener("submit", e => { e.preventDefault(); const goal = Math.max(1, Math.min(99, Number($("#goalInput").value) || 5)), today = localDate(), todayItem = activity.days[today]; activity.dailyGoal = goal; if (todayItem && todayItem.count === 0) todayItem.goal = goal; saveActivity(); renderRecords(); toast(todayItem && todayItem.count > 0 ? "新目标将从下一次新日期记录开始" : "每日目标已更新") });
+    loadShelf(); loadActivity(); render();
   </script>
 </body>
 
