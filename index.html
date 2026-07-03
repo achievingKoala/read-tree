@@ -1157,10 +1157,6 @@
         margin-top: 0;
       }
 
-      .mock-label {
-        color: #a06b17 !important;
-      }
-
       .chapter-select {
         width: 100%;
         padding: 12px;
@@ -1485,8 +1481,8 @@
                 <span class="empty-icon">⌛</span>
                 <h3>选择章节，开始讨论</h3>
                 <p>
-                  这本书还没有讨论问题。选择你正在阅读的章节，系统会模拟未来 AI
-                  查找章节并生成问题。
+                  这本书还没有讨论问题。选择你正在阅读的章节，让 AI
+                  为你生成值得讨论的问题。
                 </p>
                 <button class="chapter-btn" id="emptyChapter">
                   <span>✦</span><span>选择章节出题</span>
@@ -1609,15 +1605,23 @@
       </div>
       <form class="form modal-body" id="chapterForm">
         <p class="generation-note">
-          当前为前端模拟生成。未来接入 AI 后，将根据图书与章节自动查找真实内容。
+          可以粘贴章节正文或摘要，让 AI 更准确地依据内容出题；留空时将根据书名和章节生成，可能因版本不同存在偏差。
         </p>
         <div class="field">
           <label for="chapterSelect">选择正在阅读的章节</label
           ><select class="chapter-select" id="chapterSelect"></select>
         </div>
+        <div class="field">
+          <label for="chapterContext">章节内容或摘要（可选）</label
+          ><textarea
+            id="chapterContext"
+            maxlength="20000"
+            placeholder="粘贴本章正文或写一段摘要，内容仅用于本次出题……"
+          ></textarea>
+        </div>
         <div class="generating" id="generating">
           <span class="thinking"><i></i><i></i><i></i></span
-          ><span>正在查找章节并生成问题……</span>
+          ><span>AI 正在生成问题……</span>
         </div>
         <div class="chapter-actions">
           <button type="button" class="secondary-btn" id="cancelChapter">
@@ -1802,7 +1806,9 @@
             if (x.source === "preset" && PRESETS[x.id]) {
               const base = clone(PRESETS[x.id]),
                 generated = Array.isArray(x.questions)
-                  ? x.questions.filter((q) => q.generationSource === "mock")
+                  ? x.questions.filter((q) =>
+                      ["mock", "ai"].includes(q.generationSource)
+                    )
                   : [];
               base.questions.push(...generated);
               base.currentChapter = x.currentChapter || null;
@@ -2067,11 +2073,9 @@
         $("#questions").innerHTML = groups
           .map(
             (group) =>
-              `<div class="question-group">${escapeHtml(group.label)}${
-                group.items[0]?.generationSource === "mock"
-                  ? ' · <span class="mock-label">模拟生成</span>'
-                  : ""
-              }</div>${group.items
+              `<div class="question-group">${escapeHtml(
+                group.label
+              )}</div>${group.items
                 .map((q) => {
                   index++;
                   const saved = state.chats[chatKey(q.id)]?.messages.length > 1;
@@ -2178,37 +2182,54 @@
           )
           .join("");
       }
-      function replyFor(q, text, session) {
-        const t = text.toLowerCase();
-        if (session.first) {
-          session.first = false;
-          return q.answer;
+      async function apiFetch(url, payload) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 50_000);
+        try {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+            signal: controller.signal,
+          });
+          let data = {};
+          try {
+            data = await response.json();
+          } catch (_error) {
+            throw new Error("服务器返回了无法解析的内容");
+          }
+          if (!response.ok) {
+            throw new Error(data.error || "AI 服务请求失败");
+          }
+          return data;
+        } catch (error) {
+          if (error.name === "AbortError") {
+            throw new Error("AI 请求超时，请稍后重试");
+          }
+          if (error instanceof TypeError) {
+            throw new Error("无法连接服务器，请确认前后端已启动");
+          }
+          throw error;
+        } finally {
+          clearTimeout(timer);
         }
-        if (t.includes("现实") || t.includes("生活"))
-          return `放到现实中看，“${q.tag}”并不只存在于书里。我们每天如何相信、选择和建立关系，都在重复这个问题。你可以试着找一个最近亲身经历的例子。`;
-        if (t.includes("角度"))
-          return `换一个角度，先不判断作者是否正确，而是问：如果故事中的人做出相反选择，会失去什么、又会得到什么？这个反事实问题常常能照亮作者真正关心的部分。`;
-        if (t.includes("细节") || t.includes("书中"))
-          return `可以留意人物前后态度的变化、反复出现的意象，以及叙述者刻意强调的对比。这些细节共同支撑了“${q.tag}”这一主题。`;
-        session.replyIndex++;
-        return `你的理解抓住了一个重要入口。${
-          q.answer.split("。")[0]
-        }。如果再往前一步，你觉得作者是在给出答案，还是邀请读者保持警惕？`;
       }
-      function send(text) {
+      async function send(text) {
         const value = text.trim(),
           b = book(),
           qid = state.activeQuestions[b.id];
         if (!value || state.busy || !qid) return;
         const session = state.chats[chatKey(qid)],
           q = b.questions.find((x) => x.id === qid);
-        recordSubmission();
-        session.messages.push({ role: "user", text: value });
-        saveChats();
+        const pendingMessages = [
+          ...session.messages,
+          { role: "user", text: value },
+        ];
         $("#messages").insertAdjacentHTML(
           "beforeend",
           messageHTML("user", value)
         );
+        const userElement = $("#messages").lastElementChild;
         $("#input").value = "";
         state.busy = true;
         $("#sendBtn").disabled = true;
@@ -2217,24 +2238,56 @@
           "beforeend",
           messageHTML("ai", "", true)
         );
+        const thinkingElement = $("#messages").lastElementChild;
         $("#messages").scrollTop = $("#messages").scrollHeight;
-        setTimeout(() => {
-          $("#messages").lastElementChild.remove();
-          const answer = replyFor(q, value, session);
-          session.messages.push({ role: "ai", text: answer });
-          saveChats();
-          $("#messages").insertAdjacentHTML(
-            "beforeend",
-            messageHTML("ai", answer)
+        try {
+          const data = await apiFetch("/api/chat", {
+            book: { title: b.title, author: b.author || "" },
+            question: q.text,
+            messages: pendingMessages,
+          });
+          if (typeof data.answer !== "string" || !data.answer.trim()) {
+            throw new Error("AI 返回了无效回复，请重试");
+          }
+          session.messages.push(
+            { role: "user", text: value },
+            { role: "ai", text: data.answer.trim() }
           );
+          session.first = false;
+          saveChats();
+          recordSubmission();
+          thinkingElement.remove();
+          if (
+            state.activeBookId === b.id &&
+            state.activeQuestions[b.id] === qid
+          ) {
+            $("#messages").insertAdjacentHTML(
+              "beforeend",
+              messageHTML("ai", data.answer.trim())
+            );
+            renderSuggestions(followUps);
+            renderQuestions();
+            renderShelf();
+            $("#input").placeholder = "继续追问，或分享新的想法……";
+            $("#input").focus();
+            $("#messages").scrollTop = $("#messages").scrollHeight;
+          }
+        } catch (error) {
+          thinkingElement.remove();
+          userElement.remove();
+          toast(error.message || "发送失败，请稍后重试");
+          if (
+            state.activeBookId === b.id &&
+            state.activeQuestions[b.id] === qid
+          ) {
+            renderSuggestions(session.first ? [] : followUps);
+            $("#input").value = value;
+            $("#input").focus();
+          }
+        } finally {
           state.busy = false;
-          renderSuggestions(followUps);
-          renderQuestions();
-          renderShelf();
-          $("#input").placeholder = "继续追问，或分享新的想法……";
-          $("#input").focus();
-          $("#messages").scrollTop = $("#messages").scrollHeight;
-        }, 700);
+          $("#sendBtn").disabled = !$("#input").value.trim();
+        }
       }
       function switchBook(id) {
         state.activeBookId = id;
@@ -2312,62 +2365,10 @@
         ).join("");
         $("#generating").classList.remove("active");
         $("#generateBtn").disabled = false;
+        $("#chapterContext").value = "";
         $("#chapterModal").showModal();
       }
-      function generateQuestionsForChapter(b, chapter) {
-        const subject =
-          b.id === "prince"
-            ? "小王子的经历"
-            : b.id === "sapiens"
-            ? "这一阶段的人类发展"
-            : b.id === "nineteen84"
-            ? "温斯顿所处的世界"
-            : `《${b.title}》这一章的内容`;
-        const label = `第 ${chapter} 章`;
-        return [
-          {
-            id: `chapter-${chapter}-understand`,
-            chapter,
-            chapterLabel: label,
-            generationSource: "mock",
-            tag: "内容理解",
-            text: `第 ${chapter} 章中，${subject}最值得注意的核心内容是什么？`,
-            prompt: `先不急着概括整章，你认为这一章最重要的一处内容是什么？`,
-            answer: `这是根据《${b.title}》第 ${chapter} 章模拟生成的问题。可以先找出本章反复出现的人物、观点或冲突，再判断哪一处推动了内容发展。`,
-          },
-          {
-            id: `chapter-${chapter}-change`,
-            chapter,
-            chapterLabel: label,
-            generationSource: "mock",
-            tag: "变化与发展",
-            text: `从第 ${chapter} 章来看，人物或核心观点发生了怎样的变化？`,
-            prompt: `你注意到哪些前后态度、选择或论述上的变化？`,
-            answer: `理解变化时，可以比较本章开头与结尾：人物知道了什么、选择了什么，或者作者的论述把读者带到了哪个新的结论。`,
-          },
-          {
-            id: `chapter-${chapter}-theme`,
-            chapter,
-            chapterLabel: label,
-            generationSource: "mock",
-            tag: "主题联系",
-            text: `第 ${chapter} 章与《${b.title}》的整体主题可能有什么联系？`,
-            prompt: `这一章是在推进主题、补充主题，还是对之前的理解提出挑战？`,
-            answer: `章节通常不孤立存在。可以把本章的关键冲突或观点与书名、前文以及全书反复出现的问题放在一起观察。`,
-          },
-          {
-            id: `chapter-${chapter}-critical`,
-            chapter,
-            chapterLabel: label,
-            generationSource: "mock",
-            tag: "批判思考",
-            text: `如果站在相反立场，你会如何评价第 ${chapter} 章中的核心选择或观点？`,
-            prompt: `试着为相反立场提出一个最有力的理由。`,
-            answer: `批判性阅读不是简单反对作者，而是先准确理解其理由，再检查前提、证据和被忽略的可能性。你的反方理由越具体，讨论就越深入。`,
-          },
-        ];
-      }
-      function submitChapter(e) {
+      async function submitChapter(e) {
         e.preventDefault();
         const b = book(),
           chapter = Number($("#chapterSelect").value);
@@ -2391,8 +2392,27 @@
         }
         $("#generating").classList.add("active");
         $("#generateBtn").disabled = true;
-        setTimeout(() => {
-          b.questions.push(...generateQuestionsForChapter(b, chapter));
+        try {
+          const data = await apiFetch("/api/questions", {
+            title: b.title,
+            author: b.author || "",
+            chapter,
+            context: $("#chapterContext").value.trim(),
+          });
+          if (!Array.isArray(data.questions) || data.questions.length !== 4) {
+            throw new Error("AI 返回的问题格式无效，请重试");
+          }
+          const ids = ["understand", "change", "theme", "critical"];
+          const questions = data.questions.map((question, index) => ({
+            id: `chapter-${chapter}-${ids[index]}`,
+            chapter,
+            chapterLabel: `第 ${chapter} 章`,
+            generationSource: "ai",
+            tag: question.tag,
+            text: question.text,
+            prompt: question.prompt,
+          }));
+          b.questions.push(...questions);
           b.generatedChapters = [...(b.generatedChapters || []), chapter];
           b.currentChapter = chapter;
           saveShelf();
@@ -2400,7 +2420,12 @@
           state.bookViews[b.id] = false;
           render();
           toast(`已生成第 ${chapter} 章的 4 个问题`);
-        }, 900);
+        } catch (error) {
+          toast(error.message || "问题生成失败，请稍后重试");
+        } finally {
+          $("#generating").classList.remove("active");
+          $("#generateBtn").disabled = false;
+        }
       }
       function escapeHtml(v) {
         const d = document.createElement("div");
