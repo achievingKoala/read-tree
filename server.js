@@ -261,12 +261,29 @@ async function handleQuestions(request, response) {
   const content = await callOpenRouter([
     {
       role: "system",
-      content:
-        '你是中文阅读教练。请输出严格 JSON，不要 Markdown。格式为 {"questions":[{"tag":"短标签","text":"问题","prompt":"引导用户回答的提示"}]}，questions 必须恰好 4 项，自由选择你认为最有价值的问题角度。',
+      content: `你是中文阅读教练。
+
+任务目标：
+你的任务不是考察书外知识或让用户泛泛而谈，而是针对指定章节中的具体内容提问，促使用户回到原文阅读、定位细节并用文本证据思考。
+
+出题要求：
+1. 问题应优先聚焦本章的人物行动、事件转折、关键语句、作者论证、意象或前后呼应。
+2. 避免“你有什么感想”之类脱离文本也能回答的空泛问题。
+3. prompt 不得直接透露答案，应给出简短的重读线索，例如提示去查看某段对话、某个决定前后或重复出现的词句。
+4. 如果没有提供章节原文，不得捏造具体情节；可以用审慎的表述让用户在本章中自行寻找和核对。
+5. questions 必须恰好 4 项，并覆盖 4 个不同的文本角度。
+
+输出要求：
+请输出严格 JSON，不要 Markdown。
+格式为 {"questions":[{"tag":"短标签","text":"问题","prompt":"引导重读的提示"}]}。`,
     },
     {
       role: "user",
-      content: `图书：《${title}》\n作者：${author || "未知"}\n章节：第 ${chapter} 章${chapterTitle ? `《${chapterTitle}》` : ""}\n${grounding}`,
+      content: `图书：《${title}》\n作者：${
+        author || "未知"
+      }\n章节：第 ${chapter} 章${
+        chapterTitle ? `《${chapterTitle}》` : ""
+      }\n${grounding}`,
     },
   ]);
 
@@ -300,7 +317,23 @@ async function handleChat(request, response) {
   const answer = await callOpenRouter([
     {
       role: "system",
-      content: `你是耐心、简洁的中文阅读教练。返回中不要出现markdown ，直接返回纯文本  正在讨论《${title}》（作者：${author || "未知"}）的问题：“${question}”。结合完整对话回应用户，解释要具体，并用一个自然的问题鼓励继续思考。不要虚构无法确认的书中细节。`,
+      content: `你是耐心、简洁的中文阅读教练。
+
+讨论背景：
+正在讨论《${title}》（作者：${author || "未知"}）的问题：“${question}”。
+
+核心目标：
+把用户引回书中，而不是代替用户阅读或立即给出完整答案。
+
+回应要求：
+1. 结合完整对话，先简短回应用户已经提到的内容。
+2. 给出一个可执行的重读线索，引导用户定位相关段落、对话、行动、关键词或前后变化。
+3. 最后只问一个与原文证据直接相关的自然问题。
+4. 如果用户还没读相关内容，明确建议先读哪类内容，不要剧透。
+5. 不要虚构无法确认的书中细节。
+
+输出要求：
+直接返回纯文本，不要使用 Markdown。`,
     },
     ...messages,
   ]);
@@ -326,13 +359,15 @@ const server = http.createServer(async (request, response) => {
   const startedAt = process.hrtime.bigint();
   const requestUrl = new URL(
     request.url,
-    `http://${request.headers.host || "localhost"}`,
+    `http://${request.headers.host || "localhost"}`
   );
 
   response.on("finish", () => {
     const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
     console.log(
-      `${request.method} ${requestUrl.pathname} ${response.statusCode} ${durationMs.toFixed(1)}ms`,
+      `${request.method} ${requestUrl.pathname} ${
+        response.statusCode
+      } ${durationMs.toFixed(1)}ms`
     );
   });
 
