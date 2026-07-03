@@ -198,11 +198,58 @@ function parseQuestions(content) {
   }));
 }
 
+function parseChapters(content) {
+  const cleaned = content
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (_error) {
+    throw new Error("AI chapter response is not JSON");
+  }
+
+  const chapters = Array.isArray(parsed) ? parsed : parsed.chapters;
+  if (
+    !Array.isArray(chapters) ||
+    chapters.length < 1 ||
+    chapters.length > 200
+  ) {
+    throw new Error("AI chapter response has an invalid chapter count");
+  }
+
+  return chapters.map((chapter, index) => ({
+    number: index + 1,
+    title: requiredString(chapter?.title, "章节名", 120),
+  }));
+}
+
+async function handleChapters(request, response) {
+  const body = await readJson(request);
+  const title = requiredString(body.title, "书名", 80);
+  const author = optionalString(body.author, "作者", 80);
+  const content = await callOpenRouter([
+    {
+      role: "system",
+      content:
+        '你是图书目录助手。请输出严格 JSON，不要 Markdown，格式为 {"chapters":[{"title":"章节名"}]}。列出该书从第一章开始的完整正式章节目录，保持原有顺序，不要加入序言、推荐序、附录、致谢等非正文章节。不要输出章节序号，title 只放章节名称。如果无法可靠确认该书的章节目录，也必须返回最常见中文版本的目录，不要解释。',
+    },
+    {
+      role: "user",
+      content: `图书：《${title}》\n作者：${author || "未知"}`,
+    },
+  ]);
+
+  sendJson(response, 200, { chapters: parseChapters(content) });
+}
+
 async function handleQuestions(request, response) {
   const body = await readJson(request);
   const title = requiredString(body.title, "书名", 80);
   const author = optionalString(body.author, "作者", 80);
   const chapter = Number(body.chapter);
+  const chapterTitle = optionalString(body.chapterTitle, "章节名", 120);
   const context = optionalString(body.context, "章节内容", 20_000);
   if (!Number.isInteger(chapter) || chapter < 1 || chapter > 9999) {
     throw new ClientError("章节号无效");
@@ -219,7 +266,7 @@ async function handleQuestions(request, response) {
     },
     {
       role: "user",
-      content: `图书：《${title}》\n作者：${author || "未知"}\n章节：第 ${chapter} 章\n${grounding}`,
+      content: `图书：《${title}》\n作者：${author || "未知"}\n章节：第 ${chapter} 章${chapterTitle ? `《${chapterTitle}》` : ""}\n${grounding}`,
     },
   ]);
 
@@ -300,6 +347,10 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "POST" && url.pathname === "/api/questions") {
       await handleQuestions(request, response);
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/chapters") {
+      await handleChapters(request, response);
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/chat") {
