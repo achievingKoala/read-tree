@@ -1491,7 +1491,7 @@
               </div>
             </div>
             <div class="chat-view" id="chatView">
-              <div class="chat-topic">
+              <div class="chat-topic hidden">
                 <span>正在讨论</span>
                 <p id="activeQuestion"></p>
               </div>
@@ -2138,12 +2138,21 @@
             messages: [
               {
                 role: "ai",
-                text: "请先回到本章找一找与这个问题有关的段落或细节。\n\n不用担心答得是否正确，我更想听听你根据原文得到的理解。",
+                text: q.text,
               },
             ],
             first: true,
             replyIndex: 0,
           };
+          saveChats();
+        } else if (
+          !state.chats[key].messages.length ||
+          state.chats[key].messages[0]?.role === "user"
+        ) {
+          state.chats[key].messages.unshift({
+            role: "ai",
+            text: q.text,
+          });
           saveChats();
         }
         renderQuestions();
