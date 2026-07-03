@@ -194,7 +194,6 @@ function parseQuestions(content) {
   return questions.map((question) => ({
     tag: requiredString(question?.tag, "问题标签", 20),
     text: requiredString(question?.text, "问题", 180),
-    prompt: requiredString(question?.prompt, "引导语", 240),
   }));
 }
 
@@ -269,13 +268,13 @@ async function handleQuestions(request, response) {
 出题要求：
 1. 问题应优先聚焦本章的人物行动、事件转折、关键语句、作者论证、意象或前后呼应。
 2. 避免“你有什么感想”之类脱离文本也能回答的空泛问题。
-3. prompt 不得直接透露答案，应给出简短的重读线索，例如提示去查看某段对话、某个决定前后或重复出现的词句。
-4. 如果没有提供章节原文，不得捏造具体情节；可以用审慎的表述让用户在本章中自行寻找和核对。
-5. questions 必须恰好 4 项，并覆盖 4 个不同的文本角度。
+3. 如果没有提供章节原文，不得捏造具体情节；可以用审慎的表述让用户在本章中自行寻找和核对。
+4. questions 必须恰好 4 项，并覆盖 4 个不同的文本角度。
 
 输出要求：
 请输出严格 JSON，不要 Markdown。
-格式为 {"questions":[{"tag":"短标签","text":"问题","prompt":"引导重读的提示"}]}。`,
+格式为 {"questions":[{"tag":"短标签","text":"问题"}]}。
+每个问题对象只能包含 tag 和 text 两个属性。`,
     },
     {
       role: "user",
