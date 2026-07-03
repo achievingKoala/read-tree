@@ -215,7 +215,7 @@ async function handleQuestions(request, response) {
     {
       role: "system",
       content:
-        "你是中文阅读教练。请输出严格 JSON，不要 Markdown。格式为 {\"questions\":[{\"tag\":\"短标签\",\"text\":\"问题\",\"prompt\":\"引导用户回答的提示\"}]}，questions 必须恰好 4 项，分别关注内容理解、变化发展、主题联系、批判思考。",
+        "你是中文阅读教练。请输出严格 JSON，不要 Markdown。格式为 {\"questions\":[{\"tag\":\"短标签\",\"text\":\"问题\",\"prompt\":\"引导用户回答的提示\"}]}，questions 必须恰好 4 项，自由选择你认为最有价值的问题角度。",
     },
     {
       role: "user",
