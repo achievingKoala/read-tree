@@ -215,7 +215,7 @@ async function handleQuestions(request, response) {
     {
       role: "system",
       content:
-        "你是中文阅读教练。请输出严格 JSON，不要 Markdown。格式为 {\"questions\":[{\"tag\":\"短标签\",\"text\":\"问题\",\"prompt\":\"引导用户回答的提示\"}]}，questions 必须恰好 4 项，自由选择你认为最有价值的问题角度。",
+        '你是中文阅读教练。请输出严格 JSON，不要 Markdown。格式为 {"questions":[{"tag":"短标签","text":"问题","prompt":"引导用户回答的提示"}]}，questions 必须恰好 4 项，自由选择你认为最有价值的问题角度。',
     },
     {
       role: "user",
@@ -253,7 +253,7 @@ async function handleChat(request, response) {
   const answer = await callOpenRouter([
     {
       role: "system",
-      content: `你是耐心、简洁的中文阅读教练。正在讨论《${title}》（作者：${author || "未知"}）的问题：“${question}”。结合完整对话回应用户，解释要具体，并用一个自然的问题鼓励继续思考。不要虚构无法确认的书中细节。`,
+      content: `你是耐心、简洁的中文阅读教练。返回中不要出现markdown ，直接返回纯文本  正在讨论《${title}》（作者：${author || "未知"}）的问题：“${question}”。结合完整对话回应用户，解释要具体，并用一个自然的问题鼓励继续思考。不要虚构无法确认的书中细节。`,
     },
     ...messages,
   ]);
@@ -276,11 +276,21 @@ function serveIndex(response) {
 }
 
 const server = http.createServer(async (request, response) => {
-  try {
-    const url = new URL(
-      request.url,
-      `http://${request.headers.host || "localhost"}`
+  const startedAt = process.hrtime.bigint();
+  const requestUrl = new URL(
+    request.url,
+    `http://${request.headers.host || "localhost"}`,
+  );
+
+  response.on("finish", () => {
+    const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+    console.log(
+      `${request.method} ${requestUrl.pathname} ${response.statusCode} ${durationMs.toFixed(1)}ms`,
     );
+  });
+
+  try {
+    const url = requestUrl;
     if (
       request.method === "GET" &&
       (url.pathname === "/" || url.pathname === "/index.html")
