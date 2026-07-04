@@ -209,7 +209,12 @@ function parseChapters(content) {
     throw new Error("AI chapter response is not JSON");
   }
 
-  const chapters = Array.isArray(parsed) ? parsed : parsed.chapters;
+  const confidence = parsed?.confidence;
+  if (confidence !== "high" && confidence !== "low") {
+    throw new Error("AI chapter response has an invalid confidence");
+  }
+  const warning = optionalString(parsed?.warning, "目录提醒", 240);
+  const chapters = parsed?.chapters;
   if (
     !Array.isArray(chapters) ||
     chapters.length < 1 ||
@@ -218,10 +223,16 @@ function parseChapters(content) {
     throw new Error("AI chapter response has an invalid chapter count");
   }
 
-  return chapters.map((chapter, index) => ({
-    number: index + 1,
-    title: requiredString(chapter?.title, "章节名", 120),
-  }));
+  return {
+    confidence,
+    warning,
+    chapters: chapters.map((chapter, index) => ({
+      number: index + 1,
+      title: requiredString(chapter?.title, "章节名", 120),
+      summary: requiredString(chapter?.summary, "章节简介", 500),
+      source: "ai",
+    })),
+  };
 }
 
 async function handleChapters(request, response) {
@@ -231,8 +242,15 @@ async function handleChapters(request, response) {
   const content = await callOpenRouter([
     {
       role: "system",
-      content:
-        '你是图书目录助手。请输出严格 JSON，不要 Markdown，格式为 {"chapters":[{"title":"章节名"}]}。列出该书从第一章开始的完整正式章节目录，保持原有顺序，不要加入序言、推荐序、附录、致谢等非正文章节。不要输出章节序号，title 只放章节名称。如果无法可靠确认该书的章节目录，也必须返回最常见中文版本的目录，不要解释。',
+      content: `你是谨慎的图书目录助手。请输出严格 JSON，不要 Markdown。
+格式为 {"confidence":"high|low","warning":"给用户的简短核对提醒","chapters":[{"title":"章节名","summary":"章节简介"}]}。
+
+要求：
+1. 列出从第一章开始的正式正文目录，保持原有顺序，不加入推荐序、附录或致谢。
+2. title 不包含章节序号。
+3. summary 用 1–2 句话概括本章主题，最多 160 个汉字；不得编造无法确认的人物、情节、观点或引文。
+4. 只有高度确信书籍及常见版本目录时 confidence 才能为 high，否则必须为 low。
+5. 不确定时不要假装准确；warning 应明确说明可能存在版本差异并建议用户核对。confidence 为 high 时 warning 可以为空字符串。`,
     },
     {
       role: "user",
@@ -240,7 +258,7 @@ async function handleChapters(request, response) {
     },
   ]);
 
-  sendJson(response, 200, { chapters: parseChapters(content) });
+  sendJson(response, 200, parseChapters(content));
 }
 
 async function handleQuestions(request, response) {
@@ -250,13 +268,26 @@ async function handleQuestions(request, response) {
   const chapter = Number(body.chapter);
   const chapterTitle = optionalString(body.chapterTitle, "章节名", 120);
   const context = optionalString(body.context, "章节内容", 20_000);
+  const contextSource = body.contextSource || "none";
   if (!Number.isInteger(chapter) || chapter < 1 || chapter > 9999) {
     throw new ClientError("章节号无效");
   }
+  if (!["ai-summary", "user", "none"].includes(contextSource)) {
+    throw new ClientError("章节内容来源无效");
+  }
+  if (contextSource !== "none" && !context) {
+    throw new ClientError("章节内容不能为空");
+  }
 
-  const grounding = context
-    ? `以下是用户提供的章节内容或摘要。只能依据它出题，不得补充其中没有的情节：\n${context}`
-    : "用户没有提供章节内容。可以依据常识生成开放性问题，但不要声称具体情节一定存在，并注意不同版本的章节划分可能不同。";
+  let grounding;
+  if (contextSource === "user") {
+    grounding = `以下是用户提供或校正的章节内容。只能依据它出题，不得补充其中没有的情节：\n${context}`;
+  } else if (contextSource === "ai-summary") {
+    grounding = `以下是未经用户核对的 AI 章节简介，可能因版本差异或模型幻觉而错误：\n${context}\n只能把它当作待核对线索。问题必须使用“请在本章中核对”“本章是否”等审慎表达，不得把简介中的人物、事件或观点直接宣称为事实。`;
+  } else {
+    grounding =
+      "没有可靠的章节正文或摘要。只能生成引导用户回到本章查找证据的开放式问题，不得声称任何具体情节一定存在。";
+  }
   const content = await callOpenRouter([
     {
       role: "system",
@@ -358,7 +389,7 @@ const server = http.createServer(async (request, response) => {
   const startedAt = process.hrtime.bigint();
   const requestUrl = new URL(
     request.url,
-    `http://${request.headers.host || "localhost"}`
+    `http://${request.headers.host || "localhost"}`,
   );
 
   response.on("finish", () => {
@@ -366,7 +397,7 @@ const server = http.createServer(async (request, response) => {
     console.log(
       `${request.method} ${requestUrl.pathname} ${
         response.statusCode
-      } ${durationMs.toFixed(1)}ms`
+      } ${durationMs.toFixed(1)}ms`,
     );
   });
 
