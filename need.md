@@ -48,3 +48,60 @@ export https_proxy=http://127.0.0.1:7897
 export all_proxy=socks5://127.0.0.1:7897
 
 env | grep -i proxy
+
+13. 
+export HTTP_PROXY=http://127.0.0.1:7897
+export HTTPS_PROXY=http://127.0.0.1:7897
+export NO_PROXY=localhost,127.0.0.1
+export NODE_USE_ENV_PROXY=1
+
+14. todo 和微信读书联动 
+
+15. todo 你在按章节出题的时候 就要把章节名字带出来 给读者校对 和避免幻觉  
+
+16. done 你就要加上日志 记录下请求时长 看一下请求时长 
+
+17. todo 要根据书架里的书 还推荐读什么书 
+todo 你答题记录来推荐读什么书 
+
+18. To do list about 现在同一章节不能追加更多问题 需要改进 
+
+19. 允许自定义章节名 
+
+20. todo 我需要有的时候重新去新建一个分支 去继续讨论这个问题 
+
+21. todo 加一个笔记本功能 对话可以存入笔记本 
+
+22. 调整网页内容器高度 使其和屏幕对齐 
+
+23. todo  针对特定内容出题 
+
+24. 我有一个问题 在深度过程 我如果定时了的话 那定时结束的时候 我要立刻结束这个任务 还是要再多学一会儿呢 
+
+25. 嗯 你章节生成的时间应该有一个应该应该在你加入书书架时候就生成了个章节 
+
+26 . 要加一个主动提问功能 
+
+27. todo 有的时候生成的章节是错误的 
+
+28. Chapter question要带上chapter简介 
+
+29. 帮我找一下市面上有没有同类型的产品 
+
+30. 笔记本的管理能力拓展 
+第一版不支持编辑备注、标签、导出或批量删除。
+笔记保存的是收录时快照，不跟随原消息更新。
+笔记保存的是收录时快照，不跟随原消息更新。
+To pick up a draggable item, press the space bar.
+While dragging, use the arrow keys to move the item.
+Press space again to drop the item in its new position, or press escape to cancel.
+
+
+
+
+
+
+
+
+
+    
