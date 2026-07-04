@@ -1214,6 +1214,47 @@
         background: #fbfbfd;
       }
 
+      .chapter-picker-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto auto;
+        gap: 8px;
+      }
+
+      .chapter-manage-btn {
+        padding: 0 12px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        color: var(--primary);
+        background: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .chapter-manage-btn:disabled {
+        color: #a9adbc;
+        cursor: not-allowed;
+      }
+
+      .chapter-editor {
+        display: grid;
+        grid-template-columns: 110px minmax(0, 1fr) auto auto;
+        gap: 8px;
+        padding: 12px;
+        border: 1px solid #ddd9ff;
+        border-radius: 12px;
+        background: var(--soft);
+      }
+
+      .chapter-editor input {
+        min-width: 0;
+        padding: 10px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        outline: 0;
+        background: #fff;
+      }
+
       .generation-note {
         margin: 0;
         color: var(--muted);
@@ -1257,6 +1298,16 @@
       @media (max-width: 840px) {
         .app {
           width: min(100% - 24px, 700px);
+        }
+
+        .chapter-picker-row,
+        .chapter-editor {
+          grid-template-columns: 1fr 1fr;
+        }
+
+        .chapter-picker-row .chapter-select,
+        .chapter-editor input {
+          grid-column: 1/-1;
         }
 
         .layout {
@@ -1665,8 +1716,33 @@
           AI 更准确地依据内容出题。
         </p>
         <div class="field">
-          <label for="chapterSelect">选择正在阅读的章节</label
-          ><select class="chapter-select" id="chapterSelect"></select>
+          <label for="chapterSelect">选择正在阅读的章节</label>
+          <div class="chapter-picker-row">
+            <select class="chapter-select" id="chapterSelect"></select>
+            <button class="chapter-manage-btn" id="addChapter" type="button">
+              ＋ 新增
+            </button>
+            <button class="chapter-manage-btn" id="editChapter" type="button">
+              修改名称
+            </button>
+          </div>
+        </div>
+        <div class="chapter-editor hidden" id="chapterEditor">
+          <input
+            id="chapterNumber"
+            type="number"
+            min="1"
+            max="9999"
+            step="1"
+            placeholder="章节编号"
+          />
+          <input id="chapterTitle" maxlength="120" placeholder="章节名称" />
+          <button class="primary-btn" id="saveChapter" type="button">
+            保存
+          </button>
+          <button class="secondary-btn" id="cancelChapterEdit" type="button">
+            取消
+          </button>
         </div>
         <div class="field">
           <label for="chapterContext">章节内容或摘要（可选）</label
@@ -2082,10 +2158,7 @@
       }
       function render() {
         const b = book(),
-          totalChapters = b.chapters?.length || 30,
-          progress = b.currentChapter
-            ? Math.round((b.currentChapter / totalChapters) * 100)
-            : 0;
+          progress = Math.max(0, Math.min(100, Number(b.progress) || 0));
         $("#cover").style.setProperty("--theme", b.theme);
         $("#coverKicker").textContent = b.kicker || "MY READING";
         $("#coverTitle").textContent = b.title;
@@ -2093,9 +2166,7 @@
         $("#coverSymbol").textContent = b.symbol || "✦";
         $("#bookDescription").textContent =
           b.description || "这本书还没有简介。";
-        $("#progressText").textContent = b.currentChapter
-          ? `第 ${b.currentChapter} 章 / ${totalChapters}`
-          : "尚未选择";
+        $("#progressText").textContent = `${progress}%`;
         $("#progressBar").style.width = `${progress}%`;
         $("#workspaceTitle").textContent = `和《${b.title}》聊一聊`;
         renderShelf();
@@ -2471,11 +2542,86 @@
               }>第 ${chapter.number} 章 · ${escapeHtml(chapter.title)}</option>`,
           )
           .join("");
+        $("#chapterSelect").disabled = !b.chapters.length;
+        $("#editChapter").disabled = !b.chapters.length;
+        $("#generateBtn").disabled = !b.chapters.length;
+      }
+      function closeChapterEditor() {
+        $("#chapterEditor").classList.add("hidden");
+        $("#chapterEditor").dataset.mode = "";
+        $("#chapterEditor").dataset.originalNumber = "";
+      }
+      function openChapterEditor(mode) {
+        const b = book(),
+          selectedNumber = Number($("#chapterSelect").value),
+          selectedChapter =
+            mode === "edit"
+              ? b.chapters.find((chapter) => chapter.number === selectedNumber)
+              : null;
+        if (mode === "edit" && !selectedChapter) {
+          toast("请先选择要修改的章节");
+          return;
+        }
+        $("#chapterEditor").dataset.mode = mode;
+        $("#chapterEditor").dataset.originalNumber =
+          selectedChapter?.number || "";
+        $("#chapterNumber").value = selectedChapter?.number || "";
+        $("#chapterNumber").disabled = mode === "edit";
+        $("#chapterTitle").value = selectedChapter?.title || "";
+        $("#chapterEditor").classList.remove("hidden");
+        $(mode === "edit" ? "#chapterTitle" : "#chapterNumber").focus();
+      }
+      function saveChapterEditor() {
+        const b = book(),
+          mode = $("#chapterEditor").dataset.mode,
+          number = Number($("#chapterNumber").value),
+          title = $("#chapterTitle").value.trim();
+        if (!Number.isInteger(number) || number < 1 || number > 9999) {
+          toast("章节编号必须是 1–9999 的整数");
+          return;
+        }
+        if (!title) {
+          toast("请填写章节名称");
+          return;
+        }
+        if (title.length > 120) {
+          toast("章节名称不能超过 120 个字");
+          return;
+        }
+        if (mode === "add") {
+          if (b.chapters.some((chapter) => chapter.number === number)) {
+            toast(`第 ${number} 章已经存在`);
+            return;
+          }
+          b.chapters.push({ number, title });
+        } else if (mode === "edit") {
+          const chapter = b.chapters.find((item) => item.number === number);
+          if (!chapter) {
+            toast("要修改的章节不存在");
+            return;
+          }
+          chapter.title = title;
+          b.questions.forEach((question) => {
+            if (question.chapter === number) {
+              question.chapterLabel = `第 ${number} 章 · ${title}`;
+            }
+          });
+        } else {
+          return;
+        }
+        b.chapters.sort((a, c) => a.number - c.number);
+        b.currentChapter = number;
+        saveShelf();
+        renderChapterOptions(b);
+        closeChapterEditor();
+        render();
+        toast(mode === "add" ? "章节已新增" : "章节名称已更新");
       }
       async function openChapterModal() {
         const b = book();
         $("#generating").classList.remove("active");
         $("#chapterContext").value = "";
+        closeChapterEditor();
         $("#chapterModal").showModal();
         if (b.chapters?.length) {
           renderChapterOptions(b);
@@ -2495,16 +2641,30 @@
           if (!Array.isArray(data.chapters) || !data.chapters.length) {
             throw new Error("AI 返回的章节目录格式无效，请重试");
           }
-          b.chapters = data.chapters;
+          const chapterMap = new Map(
+            data.chapters.map((chapter) => [chapter.number, chapter]),
+          );
+          b.chapters.forEach((chapter) => {
+            chapterMap.set(chapter.number, chapter);
+          });
+          b.chapters = [...chapterMap.values()].sort(
+            (a, c) => a.number - c.number,
+          );
           saveShelf();
           renderChapterOptions(b);
           render();
           $("#generateBtn").disabled = false;
         } catch (error) {
-          $("#chapterSelect").innerHTML = "<option>章节目录获取失败</option>";
-          toast(error.message || "章节目录获取失败，请稍后重试");
+          if (b.chapters.length) {
+            renderChapterOptions(b);
+          } else {
+            $("#chapterSelect").innerHTML =
+              "<option>章节目录获取失败，可手动新增</option>";
+            $("#editChapter").disabled = true;
+          }
+          toast(error.message || "章节目录获取失败，可以手动新增章节");
         } finally {
-          $("#chapterSelect").disabled = false;
+          $("#chapterSelect").disabled = !b.chapters.length;
         }
       }
       async function submitChapter(e) {
@@ -2632,6 +2792,20 @@
       $("#customPane").addEventListener("submit", addCustom);
       $("#openChapter").addEventListener("click", openChapterModal);
       $("#emptyChapter").addEventListener("click", openChapterModal);
+      $("#addChapter").addEventListener("click", () =>
+        openChapterEditor("add"),
+      );
+      $("#editChapter").addEventListener("click", () =>
+        openChapterEditor("edit"),
+      );
+      $("#saveChapter").addEventListener("click", saveChapterEditor);
+      $("#cancelChapterEdit").addEventListener("click", closeChapterEditor);
+      $("#chapterEditor").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          saveChapterEditor();
+        }
+      });
       $("#closeChapter").addEventListener("click", () =>
         $("#chapterModal").close(),
       );
