@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
@@ -27,7 +27,8 @@
         margin: 0;
         min-width: 320px;
         color: var(--ink);
-        background: radial-gradient(
+        background:
+          radial-gradient(
             circle at 4% 8%,
             rgba(98, 89, 232, 0.1),
             transparent 28%
@@ -38,8 +39,8 @@
             transparent 28%
           ),
           var(--bg);
-        font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui,
-          sans-serif;
+        font-family:
+          Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
         -webkit-font-smoothing: antialiased;
       }
 
@@ -364,7 +365,8 @@
         top: -50px;
         border: 1px solid rgba(255, 255, 255, 0.2);
         border-radius: 50%;
-        box-shadow: 0 0 0 22px rgba(255, 255, 255, 0.035),
+        box-shadow:
+          0 0 0 22px rgba(255, 255, 255, 0.035),
           0 0 0 44px rgba(255, 255, 255, 0.025);
       }
 
@@ -592,6 +594,7 @@
 
       .question-card {
         position: relative;
+        width: 100%;
         min-height: 140px;
         padding: 18px;
         text-align: left;
@@ -606,6 +609,39 @@
         transform: translateY(-3px);
         border-color: #c5c0fa;
         box-shadow: 0 13px 26px rgba(55, 48, 137, 0.09);
+      }
+
+      .question-card-wrap {
+        position: relative;
+      }
+
+      .question-delete {
+        position: absolute;
+        z-index: 1;
+        top: 12px;
+        right: 12px;
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        padding: 0;
+        border: 0;
+        border-radius: 8px;
+        color: #a9adbc;
+        background: transparent;
+        cursor: pointer;
+        opacity: 0;
+        transition: 0.2s;
+      }
+
+      .question-card-wrap:hover .question-delete,
+      .question-delete:focus-visible {
+        opacity: 1;
+      }
+
+      .question-delete:hover {
+        color: #c44747;
+        background: #fff0f0;
       }
 
       .question-card.active {
@@ -650,6 +686,10 @@
         top: 18px;
         right: 17px;
         color: #a9adbc;
+      }
+
+      .question-card-wrap:hover .question-arrow {
+        opacity: 0;
       }
 
       .saved-mark {
@@ -719,6 +759,13 @@
         min-height: 0;
         padding: 12px;
         border-radius: 12px;
+      }
+
+      .workspace.chatting .question-delete {
+        top: 7px;
+        right: 7px;
+        width: 24px;
+        height: 24px;
       }
 
       .workspace.chatting .question-number {
@@ -1355,9 +1402,16 @@
           scrollbar-width: none;
         }
 
-        .workspace.chatting .question-card {
+        .workspace.chatting .question-card-wrap {
           flex: 0 0 174px;
+        }
+
+        .workspace.chatting .question-card {
           min-height: 89px;
+        }
+
+        .question-delete {
+          opacity: 1;
         }
 
         .chat-view {
@@ -1808,12 +1862,19 @@
           .map((x) => {
             if (x.source === "preset" && PRESETS[x.id]) {
               const base = clone(PRESETS[x.id]),
+                deletedQuestionIds = Array.isArray(x.deletedQuestionIds)
+                  ? x.deletedQuestionIds
+                  : [],
                 generated = Array.isArray(x.questions)
                   ? x.questions.filter((q) =>
-                      ["mock", "ai"].includes(q.generationSource)
+                      ["mock", "ai"].includes(q.generationSource),
                     )
                   : [];
+              base.questions = base.questions.filter(
+                (q) => !deletedQuestionIds.includes(q.id),
+              );
               base.questions.push(...generated);
+              base.deletedQuestionIds = deletedQuestionIds;
               base.currentChapter = x.currentChapter || null;
               base.chapters = Array.isArray(x.chapters) ? x.chapters : [];
               base.generatedChapters = Array.isArray(x.generatedChapters)
@@ -1827,6 +1888,9 @@
               chapters: Array.isArray(x.chapters) ? x.chapters : [],
               generatedChapters: Array.isArray(x.generatedChapters)
                 ? x.generatedChapters
+                : [],
+              deletedQuestionIds: Array.isArray(x.deletedQuestionIds)
+                ? x.deletedQuestionIds
                 : [],
               questions: Array.isArray(x.questions) ? x.questions : [],
             };
@@ -1858,7 +1922,7 @@
               (message) =>
                 message &&
                 (message.role === "ai" || message.role === "user") &&
-                typeof message.text === "string"
+                typeof message.text === "string",
             )
             .map((message) => ({
               role: message.role,
@@ -1964,13 +2028,13 @@
           shown = dates.slice(0, visibleHistory),
           total = dates.reduce(
             (sum, date) => sum + activity.days[date].count,
-            0
+            0,
           );
         $("#goalInput").value = activity.dailyGoal;
         $("#todayCount").textContent = `${todayItem.count} / ${todayItem.goal}`;
         $("#todayProgress").style.width = `${Math.min(
           100,
-          (todayItem.count / todayItem.goal) * 100
+          (todayItem.count / todayItem.goal) * 100,
         )}%`;
         $("#streakCount").textContent = calculateStreak();
         $("#totalCount").textContent = total;
@@ -1983,7 +2047,7 @@
                 const item = activity.days[date],
                   done = item.count >= item.goal;
                 return `<div class="history-row"><div class="history-date"><strong>${formatRecordDate(
-                  date
+                  date,
                 )}</strong><small>${date}</small></div><span class="history-count">${
                   item.count
                 } / ${item.goal} 次</span><span class="history-state ${
@@ -2013,7 +2077,7 @@
       }
       function hasBookHistory(id) {
         return Object.keys(state.chats).some(
-          (k) => k.startsWith(id + "::") && state.chats[k].messages.length > 1
+          (k) => k.startsWith(id + "::") && state.chats[k].messages.length > 1,
         );
       }
       function render() {
@@ -2045,20 +2109,20 @@
               `<button class="shelf-item ${
                 b.id === state.activeBookId ? "active" : ""
               }" data-book="${escapeHtml(
-                b.id
+                b.id,
               )}"><span class="mini-cover" style="--theme:${
                 b.theme
               }">${escapeHtml(
-                b.title.slice(0, 1)
+                b.title.slice(0, 1),
               )}</span><span class="shelf-copy"><strong>${escapeHtml(
-                b.title
+                b.title,
               )}</strong><small>${escapeHtml(
-                b.author || "作者未填写"
+                b.author || "作者未填写",
               )}</small></span>${
                 hasBookHistory(b.id)
                   ? '<i class="history-dot" title="有聊天记录"></i>'
                   : ""
-              }</button>`
+              }</button>`,
           )
           .join("");
       }
@@ -2080,27 +2144,31 @@
           .map(
             (group) =>
               `<div class="question-group">${escapeHtml(
-                group.label
+                group.label,
               )}</div>${group.items
                 .map((q) => {
                   index++;
                   const saved = state.chats[chatKey(q.id)]?.messages.length > 1;
-                  return `<button class="question-card ${
+                  return `<div class="question-card-wrap"><button class="question-card ${
                     state.activeQuestions[b.id] === q.id ? "active" : ""
                   }" data-question="${
                     q.id
                   }"><span class="question-number">${String(index).padStart(
                     2,
-                    "0"
+                    "0",
                   )}</span><strong>${escapeHtml(
-                    q.text
+                    q.text,
                   )}</strong><small>${escapeHtml(
-                    q.tag
+                    q.tag,
                   )}</small><span class="question-arrow">→</span>${
                     saved ? '<span class="saved-mark">● 有对话</span>' : ""
-                  }</button>`;
+                  }</button><button class="question-delete" type="button" data-delete-question="${escapeHtml(
+                    q.id,
+                  )}" aria-label="删除问题：${escapeHtml(
+                    q.text,
+                  )}" title="删除问题">×</button></div>`;
                 })
-                .join("")}`
+                .join("")}`,
           )
           .join("");
       }
@@ -2159,6 +2227,30 @@
         renderView();
         setTimeout(() => $("#input").focus(), 100);
       }
+      function deleteQuestion(qid) {
+        const b = book(),
+          question = b.questions.find((q) => q.id === qid);
+        if (!question) return;
+        if (!window.confirm(`确定删除这个问题吗？\n\n${question.text}`)) return;
+        b.questions = b.questions.filter((q) => q.id !== qid);
+        if (b.source === "preset" && !question.generationSource) {
+          b.deletedQuestionIds = Array.isArray(b.deletedQuestionIds)
+            ? b.deletedQuestionIds
+            : [];
+          if (!b.deletedQuestionIds.includes(qid)) {
+            b.deletedQuestionIds.push(qid);
+          }
+        }
+        delete state.chats[chatKey(qid)];
+        if (state.activeQuestions[b.id] === qid) {
+          delete state.activeQuestions[b.id];
+          state.bookViews[b.id] = false;
+        }
+        saveShelf();
+        saveChats();
+        render();
+        toast("问题已删除");
+      }
       function restoreChat(qid) {
         const q = book().questions.find((x) => x.id === qid),
           session = state.chats[chatKey(qid)];
@@ -2170,7 +2262,7 @@
         renderSuggestions(
           session.first
             ? ["我还没想好，给我一点提示", "先看看这个问题的背景"]
-            : followUps
+            : followUps,
         );
         $("#input").value = "";
         $("#input").placeholder = session.first
@@ -2192,8 +2284,8 @@
           .map(
             (x) =>
               `<button class="suggestion" data-suggestion="${escapeHtml(
-                x
-              )}">${escapeHtml(x)}</button>`
+                x,
+              )}">${escapeHtml(x)}</button>`,
           )
           .join("");
       }
@@ -2242,7 +2334,7 @@
         ];
         $("#messages").insertAdjacentHTML(
           "beforeend",
-          messageHTML("user", value)
+          messageHTML("user", value),
         );
         const userElement = $("#messages").lastElementChild;
         $("#input").value = "";
@@ -2251,7 +2343,7 @@
         $("#suggestions").innerHTML = "";
         $("#messages").insertAdjacentHTML(
           "beforeend",
-          messageHTML("ai", "", true)
+          messageHTML("ai", "", true),
         );
         const thinkingElement = $("#messages").lastElementChild;
         $("#messages").scrollTop = $("#messages").scrollHeight;
@@ -2266,7 +2358,7 @@
           }
           session.messages.push(
             { role: "user", text: value },
-            { role: "ai", text: data.answer.trim() }
+            { role: "ai", text: data.answer.trim() },
           );
           session.first = false;
           saveChats();
@@ -2278,7 +2370,7 @@
           ) {
             $("#messages").insertAdjacentHTML(
               "beforeend",
-              messageHTML("ai", data.answer.trim())
+              messageHTML("ai", data.answer.trim()),
             );
             renderSuggestions(followUps);
             renderQuestions();
@@ -2376,7 +2468,7 @@
             (chapter) =>
               `<option value="${chapter.number}" ${
                 b.currentChapter === chapter.number ? "selected" : ""
-              }>第 ${chapter.number} 章 · ${escapeHtml(chapter.title)}</option>`
+              }>第 ${chapter.number} 章 · ${escapeHtml(chapter.title)}</option>`,
           )
           .join("");
       }
@@ -2479,6 +2571,11 @@
         if (b) switchBook(b.dataset.book);
       });
       $("#questions").addEventListener("click", (e) => {
+        const deleteButton = e.target.closest("[data-delete-question]");
+        if (deleteButton) {
+          deleteQuestion(deleteButton.dataset.deleteQuestion);
+          return;
+        }
         const q = e.target.closest("[data-question]");
         if (q) openQuestion(q.dataset.question);
       });
@@ -2520,13 +2617,13 @@
             .forEach((x) => x.classList.toggle("active", x === btn));
           $("#presetPane").classList.toggle(
             "hidden",
-            btn.dataset.tab !== "preset"
+            btn.dataset.tab !== "preset",
           );
           $("#customPane").classList.toggle(
             "hidden",
-            btn.dataset.tab !== "custom"
+            btn.dataset.tab !== "custom",
           );
-        })
+        }),
       );
       $("#presetGrid").addEventListener("click", (e) => {
         const b = e.target.closest("[data-add-preset]");
@@ -2536,17 +2633,17 @@
       $("#openChapter").addEventListener("click", openChapterModal);
       $("#emptyChapter").addEventListener("click", openChapterModal);
       $("#closeChapter").addEventListener("click", () =>
-        $("#chapterModal").close()
+        $("#chapterModal").close(),
       );
       $("#cancelChapter").addEventListener("click", () =>
-        $("#chapterModal").close()
+        $("#chapterModal").close(),
       );
       $("#chapterForm").addEventListener("submit", submitChapter);
       $("#chapterModal").addEventListener("click", (e) => {
         if (e.target === $("#chapterModal")) $("#chapterModal").close();
       });
       $("#recordsNav").addEventListener("click", () =>
-        showPage(currentPage === "records" ? "reading" : "records")
+        showPage(currentPage === "records" ? "reading" : "records"),
       );
       $("#loadMore").addEventListener("click", () => {
         visibleHistory += 30;
@@ -2556,7 +2653,7 @@
         e.preventDefault();
         const goal = Math.max(
             1,
-            Math.min(99, Number($("#goalInput").value) || 5)
+            Math.min(99, Number($("#goalInput").value) || 5),
           ),
           today = localDate(),
           todayItem = activity.days[today];
@@ -2567,7 +2664,7 @@
         toast(
           todayItem && todayItem.count > 0
             ? "新目标将从下一次新日期记录开始"
-            : "每日目标已更新"
+            : "每日目标已更新",
         );
       });
       loadShelf();
