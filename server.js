@@ -112,7 +112,7 @@ function optionalString(value, label, maxLength) {
   return value.trim();
 }
 
-async function callOpenRouter(messages) {
+async function callOpenRouter(messages, options = {}) {
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) {
     const error = new Error("OpenRouter API Key 未配置");
@@ -121,9 +121,18 @@ async function callOpenRouter(messages) {
   }
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 45_000);
+  const timer = setTimeout(
+    () => controller.abort(),
+    options.timeoutMs || 45_000
+  );
 
   try {
+    const requestBody = {
+      model: options.model || process.env.OPENROUTER_MODEL || "openrouter/auto",
+      messages,
+      temperature: 0.7,
+    };
+
     const upstream = await fetch(OPENROUTER_URL, {
       method: "POST",
       headers: {
@@ -132,11 +141,7 @@ async function callOpenRouter(messages) {
         "HTTP-Referer": `http://localhost:${port}`,
         "X-Title": "ReadPage AI Reading Assistant",
       },
-      body: JSON.stringify({
-        model: process.env.OPENROUTER_MODEL || "openrouter/auto",
-        messages,
-        temperature: 0.7,
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 
@@ -239,24 +244,32 @@ async function handleChapters(request, response) {
   const body = await readJson(request);
   const title = requiredString(body.title, "书名", 80);
   const author = optionalString(body.author, "作者", 80);
-  const content = await callOpenRouter([
-    {
-      role: "system",
-      content: `你是谨慎的图书目录助手。请输出严格 JSON，不要 Markdown。
+  const content = await callOpenRouter(
+    [
+      {
+        role: "system",
+        content: `你是谨慎的图书目录助手。请输出严格 JSON，不要 Markdown。
 格式为 {"confidence":"high|low","warning":"给用户的简短核对提醒","chapters":[{"title":"章节名","summary":"章节简介"}]}。
 
 要求：
-1. 列出从第一章开始的正式正文目录，保持原有顺序，不加入推荐序、附录或致谢。
-2. title 不包含章节序号。
-3. summary 用 1–2 句话概括本章主题，最多 160 个汉字；不得编造无法确认的人物、情节、观点或引文。
-4. 只有高度确信书籍及常见版本目录时 confidence 才能为 high，否则必须为 low。
-5. 不确定时不要假装准确；warning 应明确说明可能存在版本差异并建议用户核对。confidence 为 high 时 warning 可以为空字符串。`,
-    },
+1. 只依据模型已有知识整理章节，不得联网搜索，也不得声称已经查询了外部来源。
+2. 如果无法可靠确认目录，必须将 confidence 设为 low，并在 warning 中提醒用户核对具体版本。
+3. 列出从第一章开始的正式正文目录，保持原有顺序，不加入推荐序、附录或致谢。
+4. title 不包含章节序号。
+5. summary 用 1–2 句话概括本章主题，最多 160 个汉字；不得编造无法确认的人物、情节、观点或引文。
+6. 只有多个可靠来源相互印证，且高度确信书籍及常见版本目录时 confidence 才能为 high，否则必须为 low。
+7. 不确定时不要假装准确；warning 应明确说明可能存在版本差异并建议用户核对。confidence 为 high 时 warning 可以为空字符串。`,
+      },
+      {
+        role: "user",
+        content: `图书：《${title}》\n作者：${author || "未知"}`,
+      },
+    ],
     {
-      role: "user",
-      content: `图书：《${title}》\n作者：${author || "未知"}`,
-    },
-  ]);
+      model: process.env.OPENROUTER_CHAPTER_MODEL || "openai/gpt-5.4",
+      timeoutMs: 90_000,
+    }
+  );
 
   sendJson(response, 200, parseChapters(content));
 }
@@ -389,7 +402,7 @@ const server = http.createServer(async (request, response) => {
   const startedAt = process.hrtime.bigint();
   const requestUrl = new URL(
     request.url,
-    `http://${request.headers.host || "localhost"}`,
+    `http://${request.headers.host || "localhost"}`
   );
 
   response.on("finish", () => {
@@ -397,7 +410,7 @@ const server = http.createServer(async (request, response) => {
     console.log(
       `${request.method} ${requestUrl.pathname} ${
         response.statusCode
-      } ${durationMs.toFixed(1)}ms`,
+      } ${durationMs.toFixed(1)}ms`
     );
   });
 
