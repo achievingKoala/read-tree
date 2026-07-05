@@ -132,6 +132,12 @@
         background: var(--soft);
       }
 
+      .records-nav.active {
+        color: #fff;
+        border-color: var(--primary);
+        background: var(--primary);
+      }
+
       .layout {
         display: grid;
         grid-template-columns: 300px minmax(0, 1fr);
@@ -151,6 +157,94 @@
         max-width: 920px;
         margin: 0 auto;
         padding: 28px;
+      }
+
+      .notebook-toolbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+      }
+
+      .notebook-search {
+        width: min(320px, 100%);
+        padding: 11px 13px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        outline: 0;
+        background: #fbfbfd;
+      }
+
+      .notebook-search:focus {
+        border-color: #aaa4f3;
+      }
+
+      .notebook-list {
+        display: grid;
+        gap: 13px;
+        margin-top: 24px;
+      }
+
+      .note-card {
+        padding: 18px;
+        border: 1px solid var(--line);
+        border-radius: 15px;
+        background: #fff;
+      }
+
+      .note-card-head,
+      .note-card-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .note-card-head strong {
+        font-size: 14px;
+      }
+
+      .note-role {
+        padding: 4px 8px;
+        border-radius: 999px;
+        color: var(--primary-dark);
+        background: var(--soft);
+        font-size: 10px;
+        font-weight: 800;
+      }
+
+      .note-question {
+        margin: 10px 0 0;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .note-text {
+        margin: 14px 0;
+        white-space: pre-wrap;
+        font-size: 14px;
+        line-height: 1.75;
+      }
+
+      .note-card-meta {
+        color: #a1a4b2;
+        font-size: 10px;
+      }
+
+      .note-delete {
+        padding: 5px 8px;
+        border: 0;
+        border-radius: 7px;
+        color: #a25454;
+        background: #fff0f0;
+        cursor: pointer;
+      }
+
+      .notebook-empty {
+        padding: 70px 20px;
+        color: var(--muted);
+        text-align: center;
+        font-size: 13px;
       }
 
       .records-head,
@@ -847,6 +941,16 @@
         justify-content: flex-end;
       }
 
+      .message-body {
+        display: grid;
+        justify-items: start;
+        max-width: min(78%, 560px);
+      }
+
+      .message.user .message-body {
+        justify-items: end;
+      }
+
       .avatar {
         display: grid;
         place-items: center;
@@ -860,7 +964,7 @@
       }
 
       .bubble {
-        max-width: min(78%, 560px);
+        max-width: 100%;
         padding: 15px 18px;
         border-radius: 7px 16px 16px 16px;
         color: #393b4c;
@@ -871,10 +975,38 @@
       }
 
       .message.user .bubble {
-        order: -1;
         color: #fff;
         border-radius: 16px 7px 16px 16px;
         background: linear-gradient(135deg, #665de9, #544ad3);
+      }
+
+      .collect-message {
+        margin-top: 5px;
+        padding: 3px 7px;
+        border: 0;
+        border-radius: 6px;
+        color: #9699a8;
+        background: transparent;
+        font-size: 10px;
+        cursor: pointer;
+        opacity: 0;
+        transition: 0.2s;
+      }
+
+      .message:hover .collect-message,
+      .collect-message:focus-visible,
+      .collect-message.collected {
+        opacity: 1;
+      }
+
+      .collect-message:hover,
+      .collect-message.collected {
+        color: var(--primary);
+        background: var(--soft);
+      }
+
+      .collect-message.collected {
+        cursor: default;
       }
 
       .thinking {
@@ -1321,6 +1453,19 @@
           width: min(100% - 24px, 700px);
         }
 
+        .notebook-toolbar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .notebook-search {
+          width: 100%;
+        }
+
+        .collect-message {
+          opacity: 1;
+        }
+
         .chapter-picker-row,
         .chapter-editor {
           grid-template-columns: 1fr 1fr;
@@ -1544,6 +1689,7 @@
           <div class="status">
             <span class="status-dot"></span><span>AI 阅读伙伴在线</span>
           </div>
+          <button class="records-nav" id="notebookNav">笔记本</button>
           <button class="records-nav" id="recordsNav">阅读记录</button>
         </div>
       </header>
@@ -1679,6 +1825,24 @@
             查看更早记录
           </button>
         </div>
+      </section>
+      <section class="panel records-page hidden" id="notebookView">
+        <div class="notebook-toolbar">
+          <div class="records-head">
+            <div>
+              <h1>对话笔记本</h1>
+              <p>收下值得反复阅读的回答与想法。</p>
+            </div>
+          </div>
+          <input
+            class="notebook-search"
+            id="notebookSearch"
+            type="search"
+            placeholder="搜索书名、问题或笔记内容"
+            aria-label="搜索笔记"
+          />
+        </div>
+        <div class="notebook-list" id="notebookList"></div>
       </section>
     </main>
 
@@ -1938,6 +2102,7 @@
       const STORAGE = "readpage_shelf_v2",
         ACTIVITY_STORAGE = "readpage_activity_v1",
         CHATS_STORAGE = "readpage_chats_v1",
+        NOTEBOOK_STORAGE = "readpage_notebook_v1",
         followUps = [
           "这和现实生活有什么关系？",
           "能换一个角度解释吗？",
@@ -1949,6 +2114,7 @@
         activeQuestions: {},
         bookViews: {},
         chats: {},
+        notes: [],
         busy: false,
       };
       const activity = { dailyGoal: 5, pendingGoal: null, days: {} };
@@ -1956,6 +2122,15 @@
         visibleHistory = 30;
       const $ = (s) => document.querySelector(s),
         clone = (o) => JSON.parse(JSON.stringify(o));
+      function makeId(prefix) {
+        const random =
+          typeof crypto?.randomUUID === "function"
+            ? crypto.randomUUID()
+            : `${Date.now().toString(36)}-${Math.random()
+                .toString(36)
+                .slice(2)}`;
+        return `${prefix}-${random}`;
+      }
       function normalizeChapters(chapters) {
         if (!Array.isArray(chapters)) return [];
         return chapters
@@ -2047,6 +2222,7 @@
       }
       function loadChats() {
         let raw = {};
+        let migrated = false;
         try {
           raw = JSON.parse(localStorage.getItem(CHATS_STORAGE) || "{}");
         } catch (e) {
@@ -2069,6 +2245,10 @@
                 typeof message.text === "string",
             )
             .map((message) => ({
+              id:
+                typeof message.id === "string" && message.id
+                  ? message.id
+                  : ((migrated = true), makeId("msg")),
               role: message.role,
               text: message.text,
             }));
@@ -2082,6 +2262,7 @@
             replyIndex: Math.max(0, Number(session.replyIndex) || 0),
           };
         });
+        if (migrated) saveChats();
       }
       function saveChats() {
         try {
@@ -2089,6 +2270,58 @@
           return true;
         } catch (e) {
           toast("聊天记录保存失败，请检查浏览器存储空间");
+          return false;
+        }
+      }
+      function loadNotebook() {
+        let raw = [];
+        try {
+          raw = JSON.parse(localStorage.getItem(NOTEBOOK_STORAGE) || "[]");
+        } catch (e) {
+          raw = [];
+        }
+        if (!Array.isArray(raw)) return;
+        const sourceIds = new Set();
+        state.notes = raw
+          .filter(
+            (note) =>
+              note &&
+              typeof note.id === "string" &&
+              typeof note.sourceMessageId === "string" &&
+              !sourceIds.has(note.sourceMessageId) &&
+              (note.role === "ai" || note.role === "user") &&
+              typeof note.text === "string" &&
+              typeof note.bookTitle === "string" &&
+              typeof note.questionText === "string" &&
+              typeof note.savedAt === "string",
+          )
+          .map((note) => {
+            return {
+              id: note.id,
+              sourceMessageId: note.sourceMessageId,
+              bookId: typeof note.bookId === "string" ? note.bookId : "",
+              bookTitle: note.bookTitle,
+              questionId:
+                typeof note.questionId === "string" ? note.questionId : "",
+              questionText: note.questionText,
+              role: note.role,
+              text: note.text,
+              savedAt: note.savedAt,
+            };
+          })
+          .filter((note) => {
+            if (sourceIds.has(note.sourceMessageId)) return false;
+            sourceIds.add(note.sourceMessageId);
+            return true;
+          })
+          .sort((a, b) => b.savedAt.localeCompare(a.savedAt));
+      }
+      function saveNotebook() {
+        try {
+          localStorage.setItem(NOTEBOOK_STORAGE, JSON.stringify(state.notes));
+          return true;
+        } catch (e) {
+          toast("笔记保存失败，请检查浏览器存储空间");
           return false;
         }
       }
@@ -2204,20 +2437,117 @@
       }
       function showPage(page) {
         currentPage = page;
-        const records = page === "records";
-        $("#readingView").classList.toggle("hidden", records);
+        const records = page === "records",
+          notebook = page === "notebook";
+        $("#readingView").classList.toggle("hidden", records || notebook);
         $("#recordsView").classList.toggle("hidden", !records);
+        $("#notebookView").classList.toggle("hidden", !notebook);
         $("#recordsNav").textContent = records ? "返回书架" : "阅读记录";
+        $("#notebookNav").textContent = notebook ? "返回书架" : "笔记本";
+        $("#recordsNav").classList.toggle("active", records);
+        $("#notebookNav").classList.toggle("active", notebook);
         if (records) {
           visibleHistory = 30;
           renderRecords();
         }
+        if (notebook) {
+          $("#notebookSearch").value = "";
+          renderNotebook();
+        }
+      }
+      function formatNoteTime(value) {
+        const date = new Date(value);
+        return Number.isNaN(date.getTime())
+          ? "时间未知"
+          : date.toLocaleString("zh-CN", {
+              month: "long",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+      }
+      function renderNotebook() {
+        const query = $("#notebookSearch").value.trim().toLowerCase(),
+          notes = state.notes.filter((note) =>
+            [note.bookTitle, note.questionText, note.text].some((value) =>
+              value.toLowerCase().includes(query),
+            ),
+          );
+        if (!notes.length) {
+          $("#notebookList").innerHTML = `<div class="notebook-empty">${
+            state.notes.length
+              ? "没有找到匹配的笔记。"
+              : "还没有笔记。在对话消息下方点击“收录”试试。"
+          }</div>`;
+          return;
+        }
+        $("#notebookList").innerHTML = notes
+          .map(
+            (note) =>
+              `<article class="note-card"><div class="note-card-head"><strong>《${escapeHtml(
+                note.bookTitle,
+              )}》</strong><span class="note-role">${
+                note.role === "ai" ? "AI 回复" : "我的回答"
+              }</span></div><p class="note-question">来自问题：${escapeHtml(
+                note.questionText,
+              )}</p><p class="note-text">${escapeHtml(
+                note.text,
+              )}</p><div class="note-card-meta"><time>${escapeHtml(
+                formatNoteTime(note.savedAt),
+              )}</time><button class="note-delete" type="button" data-delete-note="${escapeHtml(
+                note.id,
+              )}">删除</button></div></article>`,
+          )
+          .join("");
       }
       function book() {
         return state.books.find((b) => b.id === state.activeBookId);
       }
       function chatKey(qid) {
         return `${state.activeBookId}::${qid}`;
+      }
+      function isMessageCollected(messageId) {
+        return state.notes.some((note) => note.sourceMessageId === messageId);
+      }
+      function collectMessage(messageId) {
+        if (isMessageCollected(messageId)) return;
+        const b = book(),
+          qid = state.activeQuestions[b.id],
+          question = b.questions.find((item) => item.id === qid),
+          message = state.chats[chatKey(qid)]?.messages.find(
+            (item) => item.id === messageId,
+          );
+        if (!question || !message) return;
+        state.notes.unshift({
+          id: makeId("note"),
+          sourceMessageId: message.id,
+          bookId: b.id,
+          bookTitle: b.title,
+          questionId: question.id,
+          questionText: question.text,
+          role: message.role,
+          text: message.text,
+          savedAt: new Date().toISOString(),
+        });
+        if (!saveNotebook()) {
+          state.notes.shift();
+          return;
+        }
+        const button = $(`[data-collect-message="${CSS.escape(message.id)}"]`);
+        if (button) {
+          button.disabled = true;
+          button.classList.add("collected");
+          button.textContent = "✓ 已收录";
+        }
+        toast("已收录到笔记本");
+      }
+      function deleteNote(noteId) {
+        const note = state.notes.find((item) => item.id === noteId);
+        if (!note || !window.confirm("确定删除这条笔记吗？")) return;
+        state.notes = state.notes.filter((item) => item.id !== noteId);
+        saveNotebook();
+        renderNotebook();
+        toast("笔记已删除");
       }
       function hasBookHistory(id) {
         return Object.keys(state.chats).some(
@@ -2344,6 +2674,7 @@
           state.chats[key] = {
             messages: [
               {
+                id: makeId("msg"),
                 role: "ai",
                 text: q.text,
               },
@@ -2357,6 +2688,7 @@
           state.chats[key].messages[0]?.role === "user"
         ) {
           state.chats[key].messages.unshift({
+            id: makeId("msg"),
             role: "ai",
             text: q.text,
           });
@@ -2395,7 +2727,7 @@
           session = state.chats[chatKey(qid)];
         $("#activeQuestion").textContent = q.text;
         $("#messages").innerHTML = session.messages
-          .map((m) => messageHTML(m.role, m.text))
+          .map((message) => messageHTML(message))
           .join("");
         $("#messages").scrollTop = $("#messages").scrollHeight;
         renderSuggestions(
@@ -2409,13 +2741,24 @@
           : "继续追问，或分享新的想法……";
         $("#sendBtn").disabled = true;
       }
-      function messageHTML(role, text, thinking = false) {
-        return `<div class="message ${role}">${
-          role === "ai" ? '<div class="avatar">✦</div>' : ""
-        }<div class="bubble">${
+      function messageHTML(message, thinking = false, collectable = true) {
+        const collected = !thinking && isMessageCollected(message.id);
+        return `<div class="message ${message.role}">${
+          message.role === "ai" ? '<div class="avatar">✦</div>' : ""
+        }<div class="message-body"><div class="bubble">${
           thinking
             ? '<span class="thinking"><i></i><i></i><i></i></span>'
-            : escapeHtml(text)
+            : escapeHtml(message.text)
+        }</div>${
+          !thinking && collectable
+            ? `<button class="collect-message ${
+                collected ? "collected" : ""
+              }" type="button" data-collect-message="${escapeHtml(
+                message.id,
+              )}" ${collected ? "disabled" : ""}>${
+                collected ? "✓ 已收录" : "＋ 收录"
+              }</button>`
+            : ""
         }</div></div>`;
       }
       function renderSuggestions(items) {
@@ -2466,14 +2809,17 @@
           qid = state.activeQuestions[b.id];
         if (!value || state.busy || !qid) return;
         const session = state.chats[chatKey(qid)],
-          q = b.questions.find((x) => x.id === qid);
-        const pendingMessages = [
-          ...session.messages,
-          { role: "user", text: value },
-        ];
+          q = b.questions.find((x) => x.id === qid),
+          userMessage = { id: makeId("msg"), role: "user", text: value },
+          pendingMessages = [...session.messages, userMessage].map(
+            ({ role, text: messageText }) => ({
+              role,
+              text: messageText,
+            }),
+          );
         $("#messages").insertAdjacentHTML(
           "beforeend",
-          messageHTML("user", value),
+          messageHTML(userMessage, false, false),
         );
         const userElement = $("#messages").lastElementChild;
         $("#input").value = "";
@@ -2482,7 +2828,7 @@
         $("#suggestions").innerHTML = "";
         $("#messages").insertAdjacentHTML(
           "beforeend",
-          messageHTML("ai", "", true),
+          messageHTML({ role: "ai", text: "" }, true, false),
         );
         const thinkingElement = $("#messages").lastElementChild;
         $("#messages").scrollTop = $("#messages").scrollHeight;
@@ -2495,10 +2841,11 @@
           if (typeof data.answer !== "string" || !data.answer.trim()) {
             throw new Error("AI 返回了无效回复，请重试");
           }
-          session.messages.push(
-            { role: "user", text: value },
-            { role: "ai", text: data.answer.trim() },
-          );
+          session.messages.push(userMessage, {
+            id: makeId("msg"),
+            role: "ai",
+            text: data.answer.trim(),
+          });
           session.first = false;
           saveChats();
           recordSubmission();
@@ -2507,16 +2854,10 @@
             state.activeBookId === b.id &&
             state.activeQuestions[b.id] === qid
           ) {
-            $("#messages").insertAdjacentHTML(
-              "beforeend",
-              messageHTML("ai", data.answer.trim()),
-            );
-            renderSuggestions(followUps);
+            restoreChat(qid);
             renderQuestions();
             renderShelf();
-            $("#input").placeholder = "继续追问，或分享新的想法……";
             $("#input").focus();
-            $("#messages").scrollTop = $("#messages").scrollHeight;
           }
         } catch (error) {
           thinkingElement.remove();
@@ -2876,6 +3217,12 @@
         const q = e.target.closest("[data-question]");
         if (q) openQuestion(q.dataset.question);
       });
+      $("#messages").addEventListener("click", (e) => {
+        const button = e.target.closest("[data-collect-message]");
+        if (button && !button.disabled) {
+          collectMessage(button.dataset.collectMessage);
+        }
+      });
       $("#backBtn").addEventListener("click", () => {
         state.bookViews[state.activeBookId] = false;
         renderView();
@@ -2982,6 +3329,14 @@
       $("#recordsNav").addEventListener("click", () =>
         showPage(currentPage === "records" ? "reading" : "records"),
       );
+      $("#notebookNav").addEventListener("click", () =>
+        showPage(currentPage === "notebook" ? "reading" : "notebook"),
+      );
+      $("#notebookSearch").addEventListener("input", renderNotebook);
+      $("#notebookList").addEventListener("click", (e) => {
+        const button = e.target.closest("[data-delete-note]");
+        if (button) deleteNote(button.dataset.deleteNote);
+      });
       $("#loadMore").addEventListener("click", () => {
         visibleHistory += 30;
         renderRecords();
@@ -3007,6 +3362,7 @@
       loadShelf();
       loadActivity();
       loadChats();
+      loadNotebook();
       render();
     </script>
   </body>
