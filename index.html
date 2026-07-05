@@ -3129,24 +3129,12 @@
           if (!["high", "low"].includes(data.confidence)) {
             throw new Error("AI 返回的目录可信度无效，请重试");
           }
-          const manualChapters = b.chapters.filter(
-              (chapter) => chapter.source === "manual",
-            ),
-            aiChapters = normalizeChapters(
-              data.chapters.map((chapter) => ({
-                ...chapter,
-                source: "ai",
-                summarySource: "ai",
-              })),
-            );
-          const chapterMap = new Map(
-            aiChapters.map((chapter) => [chapter.number, chapter]),
-          );
-          manualChapters.forEach((chapter) => {
-            chapterMap.set(chapter.number, chapter);
-          });
-          b.chapters = [...chapterMap.values()].sort(
-            (a, c) => a.number - c.number,
+          b.chapters = normalizeChapters(
+            data.chapters.map((chapter) => ({
+              ...chapter,
+              source: "ai",
+              summarySource: "ai",
+            })),
           );
           b.chapterConfidence = data.confidence;
           b.chapterWarning =
@@ -3333,7 +3321,7 @@
       $("#refreshChapters").addEventListener("click", () => {
         if (
           window.confirm(
-            "重新获取会替换 AI 生成的目录和简介；你手动新增或改名的章节会保留。确定继续吗？",
+            "重新获取会替换全部章节目录和简介，包括手动新增或改名的章节。确定继续吗？",
           )
         ) {
           fetchChapterCatalog(true);
