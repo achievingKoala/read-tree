@@ -59,14 +59,18 @@
       }
 
       .app {
+        display: flex;
+        flex-direction: column;
         width: min(1240px, calc(100% - 40px));
-        min-height: 100vh;
+        height: 100dvh;
         margin: auto;
-        padding: 25px 0 42px;
+        padding: 25px 0 0;
+        overflow: hidden;
       }
 
       .topbar {
         display: flex;
+        flex: 0 0 auto;
         align-items: center;
         justify-content: space-between;
         margin-bottom: 24px;
@@ -140,9 +144,11 @@
 
       .layout {
         display: grid;
+        flex: 1;
         grid-template-columns: 300px minmax(0, 1fr);
         gap: 22px;
-        align-items: start;
+        align-items: stretch;
+        min-height: 0;
       }
 
       .panel {
@@ -404,7 +410,12 @@
       .library {
         position: sticky;
         top: 22px;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
         padding: 18px;
+        overflow: hidden;
       }
 
       .library-head {
@@ -538,8 +549,12 @@
 
       .shelf {
         display: flex;
+        flex: 1;
         flex-direction: column;
         gap: 7px;
+        min-height: 0;
+        overflow-y: auto;
+        scrollbar-width: thin;
       }
 
       .shelf-item {
@@ -610,12 +625,16 @@
       }
 
       .workspace {
-        min-height: 720px;
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+        min-height: 0;
         overflow: hidden;
       }
 
       .workspace-header {
         display: flex;
+        flex: 0 0 auto;
         align-items: center;
         justify-content: space-between;
         padding: 23px 26px 18px;
@@ -651,11 +670,15 @@
       }
 
       .workspace-body {
-        min-height: 650px;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
       }
 
       .question-view {
+        height: 100%;
         padding: 36px;
+        overflow-y: auto;
       }
 
       .intro-badge {
@@ -797,8 +820,10 @@
       .empty-state {
         display: grid;
         place-items: center;
-        min-height: 480px;
+        height: 100%;
+        min-height: 0;
         padding: 50px;
+        overflow-y: auto;
         text-align: center;
       }
 
@@ -829,7 +854,7 @@
       .workspace.chatting .workspace-body {
         display: grid;
         grid-template-columns: 220px minmax(0, 1fr);
-        min-height: 720px;
+        min-height: 0;
       }
 
       .workspace.chatting .question-view {
@@ -889,7 +914,8 @@
       .chat-view {
         display: none;
         flex-direction: column;
-        height: 720px;
+        height: 100%;
+        min-height: 0;
       }
 
       .chat-view.active {
@@ -1451,6 +1477,9 @@
       @media (max-width: 840px) {
         .app {
           width: min(100% - 24px, 700px);
+          height: auto;
+          min-height: 100dvh;
+          overflow: visible;
         }
 
         .notebook-toolbar {
@@ -1477,11 +1506,15 @@
         }
 
         .layout {
+          flex: none;
           grid-template-columns: 1fr;
+          min-height: auto;
         }
 
         .library {
           position: static;
+          height: auto;
+          overflow: visible;
         }
 
         .library-main {
@@ -1499,9 +1532,23 @@
         }
 
         .shelf {
+          flex: none;
           flex-direction: row;
           overflow-x: auto;
+          overflow-y: hidden;
           scrollbar-width: none;
+        }
+
+        .workspace,
+        .workspace-body {
+          height: auto;
+          overflow: visible;
+        }
+
+        .question-view,
+        .empty-state {
+          height: auto;
+          overflow: visible;
         }
 
         .shelf-item {
