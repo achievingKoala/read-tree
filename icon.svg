@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">读页</title>
+  <defs>
+    <linearGradient id="background" x1="72" y1="56" x2="440" y2="456" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#43D08A" />
+      <stop offset="1" stop-color="#1FA968" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#background)" />
+  <path
+    d="M104 145c51-13 101 1 152 43 51-42 101-56 152-43v220c-51-13-101 1-152 43-51-42-101-56-152-43V145Z"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="31"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <path d="M256 188v220" fill="none" stroke="#FFFFFF" stroke-width="31" stroke-linecap="round" />
+</svg>
