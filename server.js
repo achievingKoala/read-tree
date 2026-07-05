@@ -412,6 +412,20 @@ function serveIndex(response) {
   });
 }
 
+function serveIcon(response) {
+  fs.readFile(path.join(ROOT, "icon.svg"), (error, content) => {
+    if (error) {
+      sendJson(response, 500, { error: "图标读取失败" });
+      return;
+    }
+    response.writeHead(200, {
+      "Content-Type": "image/svg+xml; charset=utf-8",
+      "Cache-Control": "no-cache",
+    });
+    response.end(content);
+  });
+}
+
 const server = http.createServer(async (request, response) => {
   const startedAt = process.hrtime.bigint();
   const requestUrl = new URL(
@@ -435,6 +449,10 @@ const server = http.createServer(async (request, response) => {
       (url.pathname === "/" || url.pathname === "/index.html")
     ) {
       serveIndex(response);
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/icon.svg") {
+      serveIcon(response);
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/questions") {
