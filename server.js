@@ -211,7 +211,8 @@ function parseChapters(content) {
   try {
     parsed = JSON.parse(cleaned);
   } catch (_error) {
-    throw new Error("AI chapter response is not JSON");
+    console.error("AI chapter response is not JSON:", cleaned.slice(0, 2_000));
+    throw new Error("AI chapter response is not valid JSON");
   }
 
   const confidence = parsed?.confidence;
@@ -220,12 +221,25 @@ function parseChapters(content) {
   }
   const warning = optionalString(parsed?.warning, "目录提醒", 240);
   const chapters = parsed?.chapters;
-  if (
-    !Array.isArray(chapters) ||
-    chapters.length < 1 ||
-    chapters.length > 200
-  ) {
-    throw new Error("AI chapter response has an invalid chapter count");
+  if (!Array.isArray(chapters)) {
+    console.error(
+      "AI chapter response has no chapters array:",
+      cleaned.slice(0, 2_000)
+    );
+    throw new Error(
+      `AI chapter response chapters must be an array, received ${
+        chapters === null ? "null" : typeof chapters
+      }`
+    );
+  }
+  if (chapters.length < 1 || chapters.length > 200) {
+    console.error(
+      `AI chapter response returned ${chapters.length} chapters:`,
+      cleaned.slice(0, 2_000)
+    );
+    throw new Error(
+      `AI chapter response has ${chapters.length} chapters; expected 1 to 200`
+    );
   }
 
   return {
