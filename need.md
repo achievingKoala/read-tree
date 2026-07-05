@@ -68,7 +68,9 @@ todo 你答题记录来推荐读什么书
 
 19. 允许自定义章节名 
 
-20. todo 我需要有的时候重新去新建一个分支 去继续讨论这个问题 
+20. todo 我需要有的时候重新去新建一个分支 
+去继续讨论这个问题 
+或者重新讨论 
 
 21. todo 加一个笔记本功能 对话可以存入笔记本 
 
@@ -97,7 +99,11 @@ While dragging, use the arrow keys to move the item.
 Press space again to drop the item in its new position, or press escape to cancel.
 
 
+31. done 教主读了什么书 
 
+32. done 给我的网站加一个图标  
+
+33. todo 一个问题毕竟还是缺乏标准 如何让用户能够不断的回来去讨论这个问题 深入讨论这个问题 或者说不断的去用这个网站呢 
 
 
 
