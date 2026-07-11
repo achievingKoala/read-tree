@@ -167,6 +167,8 @@
         max-width: 920px;
         margin: 0 auto;
         padding: 28px;
+        overflow-y: auto;
+        scrollbar-width: thin;
       }
 
       .notebook-toolbar {
@@ -1309,7 +1311,7 @@
         position: fixed;
         left: 50%;
         bottom: 24px;
-        z-index: 9;
+        z-index: 9999;
         transform: translate(-50%, 20px);
         padding: 10px 15px;
         border-radius: 10px;
@@ -1321,9 +1323,26 @@
         transition: 0.22s;
       }
 
+      dialog .toast {
+        position: sticky;
+        display: block;
+        left: auto;
+        bottom: auto;
+        z-index: 1;
+        width: fit-content;
+        max-width: min(420px, 100%);
+        margin: 16px auto 0;
+        transform: translateY(8px);
+        text-align: center;
+      }
+
       .toast.show {
         opacity: 1;
         transform: translate(-50%, 0);
+      }
+
+      dialog .toast.show {
+        transform: translateY(0);
       }
 
       .header-actions {
@@ -1513,6 +1532,13 @@
           flex: none;
           grid-template-columns: 1fr;
           min-height: auto;
+        }
+
+        .records-page {
+          flex: none;
+          width: 100%;
+          max-width: none;
+          overflow: visible;
         }
 
         .library {
@@ -1785,7 +1811,7 @@
             </div>
             <div class="header-actions">
               <button class="chapter-btn" id="openChapter">
-                <span>✦</span><span>章节出题</span></button
+                <span>✦</span><span>再生成一批</span></button
               ><button class="ghost-btn hidden" id="backBtn">
                 <span>←</span><span>返回问题</span>
               </button>
@@ -1803,13 +1829,12 @@
             <div class="empty-state hidden" id="emptyState">
               <div>
                 <span class="empty-icon">⌛</span>
-                <h3>选择章节，开始讨论</h3>
+                <h3>等待第一批问题</h3>
                 <p>
-                  这本书还没有讨论问题。选择你正在阅读的章节，让 AI
-                  为你生成值得讨论的问题。
+                  输入书名和作者后，AI 会先整理章节，再自动生成第一批值得讨论的问题。
                 </p>
                 <button class="chapter-btn" id="emptyChapter">
-                  <span>✦</span><span>选择章节出题</span>
+                  <span>✦</span><span>再生成一批</span>
                 </button>
               </div>
             </div>
@@ -1902,15 +1927,8 @@
         <h2>添加一本图书</h2>
         <button class="close-btn" id="closeModal" aria-label="关闭">×</button>
       </div>
-      <div class="tabs">
-        <button class="tab-btn active" data-tab="preset">从书库选择</button
-        ><button class="tab-btn" data-tab="custom">手动添加</button>
-      </div>
       <div class="modal-body">
-        <div id="presetPane">
-          <div class="preset-grid" id="presetGrid"></div>
-        </div>
-        <form class="form hidden" id="customPane">
+        <form class="form" id="bookForm">
           <div class="field">
             <label for="customTitle">书名 *</label
             ><input
@@ -1924,31 +1942,29 @@
             <label for="customAuthor">作者</label
             ><input id="customAuthor" maxlength="40" placeholder="作者姓名" />
           </div>
-          <div class="field">
-            <label for="customDescription">简介</label
-            ><textarea
-              id="customDescription"
-              maxlength="180"
-              placeholder="简单介绍这本书……"
-            ></textarea>
+          <div class="generating" id="bookGenerating">
+            <span class="thinking"><i></i><i></i><i></i></span
+            ><span>AI 正在整理章节并生成第一批问题……</span>
           </div>
-          <button class="primary-btn">加入书架</button>
+          <button class="primary-btn" id="addBookBtn">
+            添加并生成 4 个问题
+          </button>
         </form>
       </div>
     </dialog>
     <dialog id="chapterModal">
       <div class="modal-head">
         <div>
-          <h2>根据章节生成问题</h2>
+          <h2>选择章节生成一批问题</h2>
         </div>
-        <button class="close-btn" id="closeChapter" aria-label="关闭章节出题">
+        <button class="close-btn" id="closeChapter" aria-label="关闭生成批次">
           ×
         </button>
       </div>
       <form class="form modal-body" id="chapterForm">
         <p class="generation-note">
           章节目录和简介由 AI
-          生成，可能因版本不同存在偏差。请先核对简介，也可以粘贴正文或补充摘要。
+          生成，可能因版本不同存在偏差。请选择要出题的章节，也可以粘贴正文或补充摘要。
         </p>
         <div class="field">
           <label for="chapterSelect">选择正在阅读的章节</label>
@@ -2167,6 +2183,7 @@
         chats: {},
         notes: [],
         busy: false,
+        generating: false,
       };
       const activity = { dailyGoal: 5, pendingGoal: null, days: {} };
       let currentPage = "reading",
@@ -2517,6 +2534,17 @@
               minute: "2-digit",
             });
       }
+      function formatBatchTime(value) {
+        const date = new Date(value);
+        return Number.isNaN(date.getTime())
+          ? ""
+          : date.toLocaleString("zh-CN", {
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+      }
       function renderNotebook() {
         const query = $("#notebookSearch").value.trim().toLowerCase(),
           notes = state.notes.filter((note) =>
@@ -2650,11 +2678,18 @@
         const b = book(),
           groups = [];
         b.questions.forEach((q) => {
-          const label = q.chapterLabel || "全书讨论";
+          const label = q.batchLabel || "第 1 批 · 之前内容";
           let group = groups.find((g) => g.label === label);
           if (!group) {
-            group = { label, items: [] };
+            group = {
+              label,
+              createdAt: q.batchCreatedAt || "",
+              items: [],
+            };
             groups.push(group);
+          }
+          if (!group.createdAt && q.batchCreatedAt) {
+            group.createdAt = q.batchCreatedAt;
           }
           group.items.push(q);
         });
@@ -2663,12 +2698,15 @@
         $("#questions").innerHTML = groups
           .map(
             (group) =>
-              `<div class="question-group">${escapeHtml(
-                group.label,
-              )}</div>${group.items
+              `<div class="question-group">${escapeHtml(group.label)}${
+                group.createdAt
+                  ? ` · ${escapeHtml(formatBatchTime(group.createdAt))}`
+                  : ""
+              }</div>${group.items
                 .map((q) => {
                   index++;
-                  const saved = state.chats[chatKey(q.id)]?.messages.length > 1;
+                  const saved = state.chats[chatKey(q.id)]?.messages.length > 1,
+                    meta = [q.chapterLabel, q.tag].filter(Boolean).join(" · ");
                   return `<div class="question-card-wrap"><button class="question-card ${
                     state.activeQuestions[b.id] === q.id ? "active" : ""
                   }" data-question="${
@@ -2679,7 +2717,7 @@
                   )}</span><strong>${escapeHtml(
                     q.text,
                   )}</strong><small>${escapeHtml(
-                    q.tag,
+                    meta,
                   )}</small><span class="question-arrow">→</span>${
                     saved ? '<span class="saved-mark">● 有对话</span>' : ""
                   }</button><button class="question-delete" type="button" data-delete-question="${escapeHtml(
@@ -2702,7 +2740,9 @@
           $("#emptyState").classList.remove("hidden");
           $("#chatView").classList.remove("active");
           $("#backBtn").classList.add("hidden");
-          $("#subtitle").textContent = "问题尚未生成";
+          $("#subtitle").textContent = state.generating
+            ? "AI 正在生成第一批问题"
+            : "问题尚未生成";
           return;
         }
         $("#emptyState").classList.add("hidden");
@@ -2712,7 +2752,9 @@
         $("#backBtn").classList.toggle("hidden", !chatting);
         $("#subtitle").textContent = chatting
           ? "你的每段讨论都会自动保存"
-          : "从一个感兴趣的问题开始";
+          : state.generating
+            ? "AI 正在生成新的问题批次"
+            : "从一个感兴趣的问题开始";
         if (chatting) restoreChat(qid);
       }
       function openQuestion(qid) {
@@ -2931,40 +2973,21 @@
         state.activeBookId = id;
         render();
       }
-      function renderPresetGrid() {
-        $("#presetGrid").innerHTML = Object.values(PRESETS)
-          .map((b) => {
-            const added = state.books.some((x) => x.id === b.id);
-            return `<button class="preset-card" data-add-preset="${b.id}" ${
-              added ? "disabled" : ""
-            }><span class="preset-cover" style="--theme:${b.theme}">${
-              b.title[0]
-            }</span><span><strong>${b.title}</strong><small>${
-              added ? "已在书架中" : b.author
-            }</small></span></button>`;
+      function nextBatchNumber(b) {
+        const numbers = b.questions
+          .map((question) => {
+            const match = String(question.batchLabel || "").match(
+              /^第 (\d+) 批/,
+            );
+            return match ? Number(match[1]) : 0;
           })
-          .join("");
+          .filter((number) => Number.isInteger(number) && number > 0);
+        if (numbers.length) {
+          return Math.max(...numbers) + 1;
+        }
+        return b.questions.length ? 2 : 1;
       }
-      function addPreset(id) {
-        if (state.books.some((b) => b.id === id))
-          return toast("这本书已经在书架中了");
-        state.books.push(clone(PRESETS[id]));
-        state.activeBookId = id;
-        saveShelf();
-        $("#bookModal").close();
-        render();
-        toast("已加入书架");
-      }
-      function addCustom(e) {
-        e.preventDefault();
-        const title = $("#customTitle").value.trim(),
-          author = $("#customAuthor").value.trim(),
-          description = $("#customDescription").value.trim();
-        if (!title) return;
-        if (
-          state.books.some((b) => b.title.toLowerCase() === title.toLowerCase())
-        )
-          return toast("同名图书已经在书架中了");
+      function createCustomBook(title, author) {
         const colors = [
           "linear-gradient(150deg,#29354d,#6577a8)",
           "linear-gradient(150deg,#402b35,#a25e6b)",
@@ -2977,7 +3000,7 @@
           kicker: "MY READING",
           symbol: "✦",
           theme: colors[state.books.length % colors.length],
-          description,
+          description: "AI 正在根据这本书整理可讨论的问题。",
           progress: 0,
           currentChapter: null,
           chapters: [],
@@ -2987,13 +3010,166 @@
           source: "custom",
           questions: [],
         };
+        return b;
+      }
+      function setGenerationBusy(active) {
+        state.generating = active;
+        $("#openChapter").disabled = active;
+        $("#emptyChapter").disabled = active;
+        $("#addBookBtn").disabled = active;
+        $("#bookGenerating").classList.toggle("active", active);
+        $("#openChapter span:last-child").textContent = active
+          ? "生成中…"
+          : "再生成一批";
+        $("#emptyChapter span:last-child").textContent = active
+          ? "生成中…"
+          : "再生成一批";
+        renderView();
+      }
+      async function addBookAndGenerate(e) {
+        e.preventDefault();
+        const title = $("#customTitle").value.trim(),
+          author = $("#customAuthor").value.trim();
+        if (!title || state.generating) return;
+        if (
+          state.books.some((b) => b.title.toLowerCase() === title.toLowerCase())
+        ) {
+          toast("同名图书已经在书架中了");
+          return;
+        }
+        const b = createCustomBook(title, author);
         state.books.push(b);
         state.activeBookId = b.id;
         saveShelf();
-        e.target.reset();
         $("#bookModal").close();
         render();
-        toast("已加入书架，可以选择章节出题");
+        try {
+          await generateInitialBatch(b.id);
+          e.target.reset();
+          toast("第一批 4 个问题已生成");
+        } catch (error) {
+          toast(error.message || "问题生成失败，请稍后重试");
+        }
+      }
+      function addQuestionsToBatch(b, chapterInfo, questionsData, batchNumber) {
+        const batchId = `batch-${Date.now().toString(36)}-${Math.random()
+            .toString(36)
+            .slice(2, 8)}`,
+          batchLabel = `第 ${batchNumber} 批 · 自动生成`,
+          batchCreatedAt = new Date().toISOString(),
+          questions = questionsData.map((question, index) => ({
+            id: `chapter-${chapterInfo.number}-${batchId}-${index + 1}`,
+            chapter: chapterInfo.number,
+            chapterLabel: `第 ${chapterInfo.number} 章 · ${chapterInfo.title}`,
+            batchId,
+            batchLabel,
+            batchCreatedAt,
+            generationSource: "ai",
+            tag: question.tag,
+            text: question.text,
+          }));
+        b.questions.push(...questions);
+        b.currentChapter = chapterInfo.number;
+      }
+      function applyChapterPayload(b, data) {
+        if (!Array.isArray(data.chapters) || !data.chapters.length) {
+          throw new Error("AI 返回的章节目录格式无效，请重试");
+        }
+        if (!["high", "low"].includes(data.confidence)) {
+          throw new Error("AI 返回的目录可信度无效，请重试");
+        }
+        b.chapters = normalizeChapters(
+          data.chapters.map((chapter) => ({
+            ...chapter,
+            source: "ai",
+            summarySource: "ai",
+          })),
+        );
+        b.chapterConfidence = data.confidence;
+        b.chapterWarning = typeof data.warning === "string" ? data.warning : "";
+      }
+      async function generateInitialBatch(bookId) {
+        if (state.generating) return;
+        const b = state.books.find((item) => item.id === bookId);
+        if (!b) return;
+        setGenerationBusy(true);
+        try {
+          const data = await apiFetch("/api/initial-batch", {
+            title: b.title,
+            author: b.author || "",
+          });
+          applyChapterPayload(b, data);
+          if (!Array.isArray(data.questions) || data.questions.length !== 4) {
+            throw new Error("AI 返回的问题格式无效，请重试");
+          }
+          const chapterInfo =
+            b.chapters.find(
+              (chapter) => chapter.number === Number(data.selectedChapter),
+            ) || b.chapters[0];
+          addQuestionsToBatch(b, chapterInfo, data.questions, nextBatchNumber(b));
+          state.bookViews[b.id] = false;
+          saveShelf();
+          render();
+        } finally {
+          setGenerationBusy(false);
+        }
+      }
+      async function fetchChaptersForBook(b) {
+        const data = await apiFetch("/api/chapters", {
+          title: b.title,
+          author: b.author || "",
+        });
+        applyChapterPayload(b, data);
+        if (!b.chapters.some((chapter) => chapter.number === b.currentChapter)) {
+          b.currentChapter = b.chapters[0]?.number || null;
+        }
+        saveShelf();
+        return b.chapters;
+      }
+      function nextChapterForBatch(b) {
+        if (!b.chapters.length) return null;
+        if (!b.questions.length) return b.chapters[0];
+        const currentIndex = b.chapters.findIndex(
+          (chapter) => chapter.number === b.currentChapter,
+        );
+        if (currentIndex < 0) return b.chapters[0];
+        return b.chapters[(currentIndex + 1) % b.chapters.length];
+      }
+      async function generateQuestionBatch(bookId = state.activeBookId) {
+        if (state.generating) return;
+        const b = state.books.find((item) => item.id === bookId);
+        if (!b) return;
+        setGenerationBusy(true);
+        try {
+          if (!b.chapters.length) {
+            await fetchChaptersForBook(b);
+          }
+          const chapterInfo = nextChapterForBatch(b);
+          if (!chapterInfo) {
+            throw new Error("请先获取章节目录后再生成问题");
+          }
+          const context = chapterInfo.summary || "",
+            contextSource = context ? "ai-summary" : "none",
+            batchNumber = nextBatchNumber(b),
+            data = await apiFetch("/api/questions", {
+              title: b.title,
+              author: b.author || "",
+              chapter: chapterInfo.number,
+              chapterTitle: chapterInfo.title,
+              context,
+              contextSource,
+              questionCount: 4,
+            });
+          if (!Array.isArray(data.questions) || data.questions.length !== 4) {
+            throw new Error("AI 返回的问题格式无效，请重试");
+          }
+          addQuestionsToBatch(b, chapterInfo, data.questions, batchNumber);
+          state.bookViews[b.id] = false;
+          saveShelf();
+          render();
+        } finally {
+          setGenerationBusy(false);
+        }
       }
       function renderChapterOptions(b) {
         $("#chapterSelect").innerHTML = b.chapters
@@ -3202,23 +3378,12 @@
             chapterTitle: chapterInfo.title,
             context,
             contextSource,
+            questionCount: 4,
           });
           if (!Array.isArray(data.questions) || data.questions.length !== 4) {
             throw new Error("AI 返回的问题格式无效，请重试");
           }
-          const generationId = `${Date.now().toString(36)}-${Math.random()
-            .toString(36)
-            .slice(2, 8)}`;
-          const questions = data.questions.map((question, index) => ({
-            id: `chapter-${chapter}-${generationId}-${index + 1}`,
-            chapter,
-            chapterLabel: `第 ${chapter} 章 · ${chapterInfo.title}`,
-            generationSource: "ai",
-            tag: question.tag,
-            text: question.text,
-          }));
-          b.questions.push(...questions);
-          b.currentChapter = chapter;
+          addQuestionsToBatch(b, chapterInfo, data.questions, nextBatchNumber(b));
           saveShelf();
           $("#chapterModal").close();
           state.bookViews[b.id] = false;
@@ -3238,6 +3403,12 @@
       }
       function toast(t) {
         const el = $("#toast");
+        const openDialog = document.querySelector("dialog[open]");
+        if (openDialog && el.parentElement !== openDialog) {
+          openDialog.appendChild(el);
+        } else if (!openDialog && el.parentElement !== document.body) {
+          document.body.appendChild(el);
+        }
         el.textContent = t;
         el.classList.add("show");
         clearTimeout(toast.timer);
@@ -3286,33 +3457,16 @@
         if (b) send(b.dataset.suggestion);
       });
       $("#openModal").addEventListener("click", () => {
-        renderPresetGrid();
+        $("#bookForm").reset();
+        $("#bookGenerating").classList.remove("active");
         $("#bookModal").showModal();
+        setTimeout(() => $("#customTitle").focus(), 60);
       });
       $("#closeModal").addEventListener("click", () => $("#bookModal").close());
       $("#bookModal").addEventListener("click", (e) => {
         if (e.target === $("#bookModal")) $("#bookModal").close();
       });
-      document.querySelectorAll(".tab-btn").forEach((btn) =>
-        btn.addEventListener("click", () => {
-          document
-            .querySelectorAll(".tab-btn")
-            .forEach((x) => x.classList.toggle("active", x === btn));
-          $("#presetPane").classList.toggle(
-            "hidden",
-            btn.dataset.tab !== "preset",
-          );
-          $("#customPane").classList.toggle(
-            "hidden",
-            btn.dataset.tab !== "custom",
-          );
-        }),
-      );
-      $("#presetGrid").addEventListener("click", (e) => {
-        const b = e.target.closest("[data-add-preset]");
-        if (b) addPreset(b.dataset.addPreset);
-      });
-      $("#customPane").addEventListener("submit", addCustom);
+      $("#bookForm").addEventListener("submit", addBookAndGenerate);
       $("#openChapter").addEventListener("click", openChapterModal);
       $("#emptyChapter").addEventListener("click", openChapterModal);
       $("#addChapter").addEventListener("click", () =>
