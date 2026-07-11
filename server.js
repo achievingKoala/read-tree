@@ -5,6 +5,7 @@ const path = require("node:path");
 const ROOT = __dirname;
 const MAX_BODY_BYTES = 250_000;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const QUESTIONS_PER_BATCH = 3;
 
 loadEnv(path.join(ROOT, ".env"));
 
@@ -187,7 +188,7 @@ function cleanJsonContent(content) {
   return cleaned;
 }
 
-function parseQuestions(content, expectedCount = 4) {
+function parseQuestions(content, expectedCount = QUESTIONS_PER_BATCH) {
   const cleaned = cleanJsonContent(content);
   let parsed;
   try {
@@ -282,8 +283,10 @@ function parseInitialBatch(content) {
   }
 
   const questions = parsed?.questions;
-  if (!Array.isArray(questions) || questions.length !== 4) {
-    throw new Error("AI initial batch response must contain four questions");
+  if (!Array.isArray(questions) || questions.length !== QUESTIONS_PER_BATCH) {
+    throw new Error(
+      `AI initial batch response must contain ${QUESTIONS_PER_BATCH} questions`
+    );
   }
 
   return {
@@ -351,7 +354,7 @@ async function handleInitialBatch(request, response) {
 
 首批问题要求：
 1. selectedChapter 固定为 1，questions 必须针对第一章生成。
-2. questions 必须恰好 4 项，并覆盖 4 个不同的文本角度。
+2. questions 必须恰好 ${QUESTIONS_PER_BATCH} 项，并覆盖 ${QUESTIONS_PER_BATCH} 个不同的文本角度。
 3. 问题应促使用户回到原文阅读、定位细节并用文本证据思考。
 4. 避免“你有什么感想”之类脱离文本也能回答的空泛问题。
 5. 不得捏造具体情节；如果目录或简介不确定，问题必须使用“请在本章中核对”“本章是否”等审慎表达。
@@ -379,16 +382,9 @@ async function handleQuestions(request, response) {
   const chapterTitle = optionalString(body.chapterTitle, "章节名", 120);
   const context = optionalString(body.context, "章节内容", 20_000);
   const contextSource = body.contextSource || "none";
-  const questionCount = Number(body.questionCount || 4);
+  const questionCount = QUESTIONS_PER_BATCH;
   if (!Number.isInteger(chapter) || chapter < 1 || chapter > 9999) {
     throw new ClientError("章节号无效");
-  }
-  if (
-    !Number.isInteger(questionCount) ||
-    questionCount < 4 ||
-    questionCount > 12
-  ) {
-    throw new ClientError("问题数量无效");
   }
   if (!["ai-summary", "user", "none"].includes(contextSource)) {
     throw new ClientError("章节内容来源无效");

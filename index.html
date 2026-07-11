@@ -1947,7 +1947,7 @@
             ><span>AI 正在整理章节并生成第一批问题……</span>
           </div>
           <button class="primary-btn" id="addBookBtn">
-            添加并生成 4 个问题
+            添加并生成 3 个问题
           </button>
         </form>
       </div>
@@ -2021,7 +2021,7 @@
         <div class="chapter-actions">
           <button type="button" class="secondary-btn" id="cancelChapter">
             取消</button
-          ><button class="primary-btn" id="generateBtn">追加 4 个问题</button>
+          ><button class="primary-btn" id="generateBtn">追加 3 个问题</button>
         </div>
       </form>
     </dialog>
@@ -2693,6 +2693,14 @@
           }
           group.items.push(q);
         });
+        groups.sort((a, c) => {
+          const batchA = parseBatchNumber(a.label),
+            batchC = parseBatchNumber(c.label);
+          if (batchA !== batchC) {
+            return batchC - batchA;
+          }
+          return String(c.createdAt).localeCompare(String(a.createdAt));
+        });
         $("#badge").textContent = `✦ 已为你准备 ${b.questions.length} 个问题`;
         let index = 0;
         $("#questions").innerHTML = groups
@@ -2973,14 +2981,13 @@
         state.activeBookId = id;
         render();
       }
+      function parseBatchNumber(label) {
+        const match = String(label || "").match(/^第 (\d+) 批/);
+        return match ? Number(match[1]) : 0;
+      }
       function nextBatchNumber(b) {
         const numbers = b.questions
-          .map((question) => {
-            const match = String(question.batchLabel || "").match(
-              /^第 (\d+) 批/,
-            );
-            return match ? Number(match[1]) : 0;
-          })
+          .map((question) => parseBatchNumber(question.batchLabel))
           .filter((number) => Number.isInteger(number) && number > 0);
         if (numbers.length) {
           return Math.max(...numbers) + 1;
@@ -3046,7 +3053,7 @@
         try {
           await generateInitialBatch(b.id);
           e.target.reset();
-          toast("第一批 4 个问题已生成");
+          toast("第一批 3 个问题已生成");
         } catch (error) {
           toast(error.message || "问题生成失败，请稍后重试");
         }
@@ -3099,7 +3106,7 @@
             author: b.author || "",
           });
           applyChapterPayload(b, data);
-          if (!Array.isArray(data.questions) || data.questions.length !== 4) {
+          if (!Array.isArray(data.questions) || data.questions.length !== 3) {
             throw new Error("AI 返回的问题格式无效，请重试");
           }
           const chapterInfo =
@@ -3158,9 +3165,9 @@
               chapterTitle: chapterInfo.title,
               context,
               contextSource,
-              questionCount: 4,
+              questionCount: 3,
             });
-          if (!Array.isArray(data.questions) || data.questions.length !== 4) {
+          if (!Array.isArray(data.questions) || data.questions.length !== 3) {
             throw new Error("AI 返回的问题格式无效，请重试");
           }
           addQuestionsToBatch(b, chapterInfo, data.questions, batchNumber);
@@ -3378,9 +3385,9 @@
             chapterTitle: chapterInfo.title,
             context,
             contextSource,
-            questionCount: 4,
+            questionCount: 3,
           });
-          if (!Array.isArray(data.questions) || data.questions.length !== 4) {
+          if (!Array.isArray(data.questions) || data.questions.length !== 3) {
             throw new Error("AI 返回的问题格式无效，请重试");
           }
           addQuestionsToBatch(b, chapterInfo, data.questions, nextBatchNumber(b));
@@ -3388,7 +3395,7 @@
           $("#chapterModal").close();
           state.bookViews[b.id] = false;
           render();
-          toast(`已为第 ${chapter} 章追加 4 个问题`);
+          toast(`已为第 ${chapter} 章追加 3 个问题`);
         } catch (error) {
           toast(error.message || "问题生成失败，请稍后重试");
         } finally {
