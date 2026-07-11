@@ -179,11 +179,16 @@ async function callOpenRouter(messages, options = {}) {
   }
 }
 
-function parseQuestions(content) {
+function cleanJsonContent(content) {
   const cleaned = content
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/, "")
     .trim();
+  return cleaned;
+}
+
+function parseQuestions(content, expectedCount = 4) {
+  const cleaned = cleanJsonContent(content);
   let parsed;
   try {
     parsed = JSON.parse(cleaned);
@@ -192,8 +197,10 @@ function parseQuestions(content) {
   }
 
   const questions = Array.isArray(parsed) ? parsed : parsed.questions;
-  if (!Array.isArray(questions) || questions.length !== 4) {
-    throw new Error("AI question response must contain four questions");
+  if (!Array.isArray(questions) || questions.length !== expectedCount) {
+    throw new Error(
+      `AI question response must contain ${expectedCount} questions`
+    );
   }
 
   return questions.map((question) => ({
@@ -203,10 +210,7 @@ function parseQuestions(content) {
 }
 
 function parseChapters(content) {
-  const cleaned = content
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/, "")
-    .trim();
+  const cleaned = cleanJsonContent(content);
   let parsed;
   try {
     parsed = JSON.parse(cleaned);
@@ -254,6 +258,44 @@ function parseChapters(content) {
   };
 }
 
+function parseInitialBatch(content) {
+  const cleaned = cleanJsonContent(content);
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (_error) {
+    console.error(
+      "AI initial batch response is not JSON:",
+      cleaned.slice(0, 2_000)
+    );
+    throw new Error("AI initial batch response is not valid JSON");
+  }
+
+  const chaptersResult = parseChapters(JSON.stringify(parsed));
+  const selectedChapter = Number(parsed?.selectedChapter);
+  if (
+    !Number.isInteger(selectedChapter) ||
+    selectedChapter < 1 ||
+    selectedChapter > chaptersResult.chapters.length
+  ) {
+    throw new Error("AI initial batch response has an invalid selectedChapter");
+  }
+
+  const questions = parsed?.questions;
+  if (!Array.isArray(questions) || questions.length !== 4) {
+    throw new Error("AI initial batch response must contain four questions");
+  }
+
+  return {
+    ...chaptersResult,
+    selectedChapter,
+    questions: questions.map((question) => ({
+      tag: requiredString(question?.tag, "问题标签", 20),
+      text: requiredString(question?.text, "问题", 180),
+    })),
+  };
+}
+
 async function handleChapters(request, response) {
   const body = await readJson(request);
   const title = requiredString(body.title, "书名", 80);
@@ -288,6 +330,47 @@ async function handleChapters(request, response) {
   sendJson(response, 200, parseChapters(content));
 }
 
+async function handleInitialBatch(request, response) {
+  const body = await readJson(request);
+  const title = requiredString(body.title, "书名", 80);
+  const author = optionalString(body.author, "作者", 80);
+  const content = await callOpenRouter(
+    [
+      {
+        role: "system",
+        content: `你是谨慎的中文阅读教练和图书目录助手。请输出严格 JSON，不要 Markdown。
+格式为 {"confidence":"high|low","warning":"给用户的简短核对提醒","selectedChapter":1,"chapters":[{"title":"章节名","summary":"章节简介"}],"questions":[{"tag":"短标签","text":"问题"}]}。
+
+目录要求：
+1. 只依据模型已有知识整理章节，不得联网搜索，也不得声称已经查询了外部来源。
+2. 如果无法可靠确认目录，必须将 confidence 设为 low，并在 warning 中提醒用户核对具体版本。
+3. 列出从第一章开始的正式正文目录，保持原有顺序，不加入推荐序、附录或致谢。
+4. title 不包含章节序号。
+5. summary 用 1–2 句话概括本章主题，最多 160 个汉字；不得编造无法确认的人物、情节、观点或引文。
+6. 只有高度确信书籍及常见版本目录时 confidence 才能为 high，否则必须为 low。
+
+首批问题要求：
+1. selectedChapter 固定为 1，questions 必须针对第一章生成。
+2. questions 必须恰好 4 项，并覆盖 4 个不同的文本角度。
+3. 问题应促使用户回到原文阅读、定位细节并用文本证据思考。
+4. 避免“你有什么感想”之类脱离文本也能回答的空泛问题。
+5. 不得捏造具体情节；如果目录或简介不确定，问题必须使用“请在本章中核对”“本章是否”等审慎表达。
+6. 每个问题对象只能包含 tag 和 text 两个属性。`,
+      },
+      {
+        role: "user",
+        content: `图书：《${title}》\n作者：${author || "未知"}`,
+      },
+    ],
+    {
+      model: process.env.OPENROUTER_CHAPTER_MODEL || "openai/gpt-5.4",
+      timeoutMs: 90_000,
+    }
+  );
+
+  sendJson(response, 200, parseInitialBatch(content));
+}
+
 async function handleQuestions(request, response) {
   const body = await readJson(request);
   const title = requiredString(body.title, "书名", 80);
@@ -296,8 +379,16 @@ async function handleQuestions(request, response) {
   const chapterTitle = optionalString(body.chapterTitle, "章节名", 120);
   const context = optionalString(body.context, "章节内容", 20_000);
   const contextSource = body.contextSource || "none";
+  const questionCount = Number(body.questionCount || 4);
   if (!Number.isInteger(chapter) || chapter < 1 || chapter > 9999) {
     throw new ClientError("章节号无效");
+  }
+  if (
+    !Number.isInteger(questionCount) ||
+    questionCount < 4 ||
+    questionCount > 12
+  ) {
+    throw new ClientError("问题数量无效");
   }
   if (!["ai-summary", "user", "none"].includes(contextSource)) {
     throw new ClientError("章节内容来源无效");
@@ -327,7 +418,7 @@ async function handleQuestions(request, response) {
 1. 问题应优先聚焦本章的人物行动、事件转折、关键语句、作者论证、意象或前后呼应。
 2. 避免“你有什么感想”之类脱离文本也能回答的空泛问题。
 3. 如果没有提供章节原文，不得捏造具体情节；可以用审慎的表述让用户在本章中自行寻找和核对。
-4. questions 必须恰好 4 项，并覆盖 4 个不同的文本角度。
+4. questions 必须恰好 ${questionCount} 项，并覆盖 ${questionCount} 个不同的文本角度。
 
 输出要求：
 请输出严格 JSON，不要 Markdown。
@@ -344,7 +435,9 @@ async function handleQuestions(request, response) {
     },
   ]);
 
-  sendJson(response, 200, { questions: parseQuestions(content) });
+  sendJson(response, 200, {
+    questions: parseQuestions(content, questionCount),
+  });
 }
 
 async function handleChat(request, response) {
@@ -457,6 +550,10 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "POST" && url.pathname === "/api/questions") {
       await handleQuestions(request, response);
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/initial-batch") {
+      await handleInitialBatch(request, response);
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/chapters") {
