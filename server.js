@@ -414,7 +414,7 @@ async function handleQuestions(request, response) {
 1. 问题应优先聚焦本章的人物行动、事件转折、关键语句、作者论证、意象或前后呼应。
 2. 避免“你有什么感想”之类脱离文本也能回答的空泛问题。
 3. 如果没有提供章节原文，不得捏造具体情节；可以用审慎的表述让用户在本章中自行寻找和核对。
-4. questions 必须恰好 ${questionCount} 个 , 最好覆盖不同角度
+4. questions 必须恰好 ${questionCount} 个 ,分为、背景问题、读前问题、读后问题。
 
 
 输出要求：

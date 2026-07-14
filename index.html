@@ -559,6 +559,19 @@
         background: #fff6f7;
       }
 
+      .book-edit-note {
+        margin: 0;
+        color: var(--muted);
+        font-size: 11px;
+        line-height: 1.55;
+      }
+
+      .book-chapters-input {
+        min-height: 180px;
+        font-family: inherit;
+        line-height: 1.6;
+      }
+
       .progress-row {
         display: flex;
         justify-content: space-between;
@@ -1836,8 +1849,8 @@
             <div class="book-summary">
               <p id="bookDescription"></p>
               <div class="book-meta-actions">
-                <button class="edit-author-btn" id="openAuthorModal">
-                  修改作者
+                <button class="edit-author-btn" id="openBookEditModal">
+                  编辑图书
                 </button>
                 <button class="delete-book-btn" id="deleteBookBtn">
                   删除书籍
@@ -2003,24 +2016,36 @@
         </form>
       </div>
     </dialog>
-    <dialog id="authorModal">
+    <dialog id="bookEditModal">
       <div class="modal-head">
-        <h2>修改图书作者</h2>
-        <button class="close-btn" id="closeAuthorModal" aria-label="关闭">
+        <h2>编辑图书</h2>
+        <button class="close-btn" id="closeBookEditModal" aria-label="关闭">
           ×
         </button>
       </div>
       <div class="modal-body">
-        <form class="form" id="authorForm">
+        <form class="form" id="bookEditForm">
           <div class="field">
-            <label for="editAuthorInput">作者</label
+            <label for="editBookAuthor">作者</label
             ><input
-              id="editAuthorInput"
+              id="editBookAuthor"
               maxlength="40"
               placeholder="作者姓名"
             />
           </div>
-          <button class="primary-btn">保存作者</button>
+          <div class="field">
+            <label for="editBookChapters">章节目录</label
+            ><textarea
+              class="book-chapters-input"
+              id="editBookChapters"
+              maxlength="12000"
+              placeholder="每行一个章节，例如：&#10;1 小王子离开自己的星球&#10;2 玫瑰与误解"
+            ></textarea>
+            <p class="book-edit-note">
+              每行一个章节。可以写“1 章节名”，也可以只写章节名，系统会按行号自动编号。
+            </p>
+          </div>
+          <button class="primary-btn">保存图书</button>
         </form>
       </div>
     </dialog>
@@ -2590,7 +2615,7 @@
         $("#workspaceTitle").textContent = `和《${b.title}》聊一聊`;
         $("#openChapter").disabled = state.generating;
         $("#emptyChapter").disabled = state.generating;
-        $("#openAuthorModal").disabled = false;
+        $("#openBookEditModal").disabled = false;
         $("#deleteBookBtn").disabled = false;
         renderShelf();
         renderQuestions();
@@ -2620,7 +2645,7 @@
         $("#backBtn").classList.add("hidden");
         $("#openChapter").disabled = true;
         $("#emptyChapter").disabled = true;
-        $("#openAuthorModal").disabled = true;
+        $("#openBookEditModal").disabled = true;
         $("#deleteBookBtn").disabled = true;
         renderShelf();
       }
@@ -2717,22 +2742,96 @@
           )
           .join("");
       }
-      function openAuthorModal() {
+      function formatBookChapterLines(chapters) {
+        return chapters
+          .map((chapter) => `${chapter.number} ${chapter.title}`)
+          .join("\n");
+      }
+      function parseBookChapterLines(value, existingChapters) {
+        const lines = value
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean),
+          usedNumbers = new Set();
+        return lines.map((line, index) => {
+          const match = line.match(
+            /^第?\s*(\d{1,4})\s*(?:章|章节)?\s*[.、:：\-·]?\s*(.*)$/,
+          );
+          let number = index + 1,
+            title = line;
+          if (match && match[2].trim()) {
+            number = Number(match[1]);
+            title = match[2].trim();
+          }
+          if (!Number.isInteger(number) || number < 1 || number > 9999) {
+            throw new Error("章节编号必须是 1–9999 的整数");
+          }
+          if (usedNumbers.has(number)) {
+            throw new Error(`第 ${number} 章重复了`);
+          }
+          if (!title) {
+            throw new Error("章节名称不能为空");
+          }
+          if (title.length > 120) {
+            throw new Error("章节名称不能超过 120 个字");
+          }
+          usedNumbers.add(number);
+          const previous = existingChapters.find(
+            (chapter) => chapter.number === number,
+          );
+          return {
+            number,
+            title,
+            summary: previous?.summary || "",
+            source: "manual",
+            summarySource: previous?.summarySource || "none",
+          };
+        });
+      }
+      function syncQuestionChapterLabels(b) {
+        b.questions.forEach((question) => {
+          const chapter = b.chapters.find(
+            (item) => item.number === question.chapter,
+          );
+          if (chapter) {
+            question.chapterLabel = `第 ${chapter.number} 章 · ${chapter.title}`;
+          }
+        });
+      }
+      function openBookEditModal() {
         const b = book();
         if (!b) return;
-        $("#editAuthorInput").value = b.author || "";
-        $("#authorModal").showModal();
-        setTimeout(() => $("#editAuthorInput").focus(), 60);
+        $("#editBookAuthor").value = b.author || "";
+        $("#editBookChapters").value = formatBookChapterLines(b.chapters || []);
+        $("#bookEditModal").showModal();
+        setTimeout(() => $("#editBookAuthor").focus(), 60);
       }
-      function saveAuthor(e) {
+      function saveBookEdit(e) {
         e.preventDefault();
         const b = book();
         if (!b) return;
-        b.author = $("#editAuthorInput").value.trim();
+        let chapters;
+        try {
+          chapters = parseBookChapterLines(
+            $("#editBookChapters").value,
+            b.chapters || [],
+          );
+        } catch (error) {
+          toast(error.message || "章节格式不正确");
+          return;
+        }
+        b.author = $("#editBookAuthor").value.trim();
+        b.chapters = chapters.sort((a, c) => a.number - c.number);
+        b.chapterConfidence = "";
+        b.chapterWarning = "";
+        if (!b.chapters.some((chapter) => chapter.number === b.currentChapter)) {
+          b.currentChapter = b.chapters[0]?.number || null;
+        }
+        syncQuestionChapterLabels(b);
         saveShelf();
-        $("#authorModal").close();
+        $("#bookEditModal").close();
         render();
-        toast(b.author ? "作者已更新" : "作者已清空");
+        toast("图书信息已更新");
       }
       function deleteCurrentBook() {
         const b = book();
@@ -3492,15 +3591,15 @@
         if (e.target === $("#bookModal")) $("#bookModal").close();
       });
       $("#bookForm").addEventListener("submit", addBookAndGenerate);
-      $("#openAuthorModal").addEventListener("click", openAuthorModal);
+      $("#openBookEditModal").addEventListener("click", openBookEditModal);
       $("#deleteBookBtn").addEventListener("click", deleteCurrentBook);
-      $("#closeAuthorModal").addEventListener("click", () =>
-        $("#authorModal").close(),
+      $("#closeBookEditModal").addEventListener("click", () =>
+        $("#bookEditModal").close(),
       );
-      $("#authorModal").addEventListener("click", (e) => {
-        if (e.target === $("#authorModal")) $("#authorModal").close();
+      $("#bookEditModal").addEventListener("click", (e) => {
+        if (e.target === $("#bookEditModal")) $("#bookEditModal").close();
       });
-      $("#authorForm").addEventListener("submit", saveAuthor);
+      $("#bookEditForm").addEventListener("submit", saveBookEdit);
       $("#openChapter").addEventListener("click", openChapterModal);
       $("#emptyChapter").addEventListener("click", openChapterModal);
       $("#addChapter").addEventListener("click", () =>
