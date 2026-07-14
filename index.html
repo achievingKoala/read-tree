@@ -523,6 +523,28 @@
         line-height: 1.65;
       }
 
+      .book-meta-actions {
+        display: flex;
+        justify-content: flex-start;
+        margin-top: 12px;
+      }
+
+      .edit-author-btn {
+        padding: 7px 10px;
+        border: 1px solid var(--line);
+        border-radius: 9px;
+        color: var(--primary);
+        background: #fff;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .edit-author-btn:hover {
+        border-color: #bab4f5;
+        background: #faf9ff;
+      }
+
       .progress-row {
         display: flex;
         justify-content: space-between;
@@ -1792,6 +1814,11 @@
             </div>
             <div class="book-summary">
               <p id="bookDescription"></p>
+              <div class="book-meta-actions">
+                <button class="edit-author-btn" id="openAuthorModal">
+                  修改作者
+                </button>
+              </div>
               <div class="progress-row">
                 <span>阅读进度</span><strong id="progressText"></strong>
               </div>
@@ -1952,6 +1979,27 @@
         </form>
       </div>
     </dialog>
+    <dialog id="authorModal">
+      <div class="modal-head">
+        <h2>修改图书作者</h2>
+        <button class="close-btn" id="closeAuthorModal" aria-label="关闭">
+          ×
+        </button>
+      </div>
+      <div class="modal-body">
+        <form class="form" id="authorForm">
+          <div class="field">
+            <label for="editAuthorInput">作者</label
+            ><input
+              id="editAuthorInput"
+              maxlength="40"
+              placeholder="作者姓名"
+            />
+          </div>
+          <button class="primary-btn">保存作者</button>
+        </form>
+      </div>
+    </dialog>
     <dialog id="chapterModal">
       <div class="modal-head">
         <div>
@@ -2074,97 +2122,6 @@
             },
           ],
         },
-        sapiens: {
-          id: "sapiens",
-          title: "人类简史",
-          author: "尤瓦尔·赫拉利",
-          kicker: "SAPIENS",
-          symbol: "◉",
-          theme: "linear-gradient(150deg,#182a37,#317b77)",
-          description: "从认知革命到科技革命，重新审视智人如何塑造共同的世界。",
-          progress: 34,
-          source: "preset",
-          questions: [
-            {
-              id: "fiction",
-              tag: "认知革命",
-              text: "共同想象为什么能让陌生人大规模合作？",
-              prompt: "你能想到哪些依靠共同相信才能运转的事物？",
-              answer:
-                "共同想象让互不相识的人共享规则、身份和目标。国家、货币与公司都不是单靠物理实体运转，而是依靠许多人共同接受一套叙事。",
-            },
-            {
-              id: "agri",
-              tag: "农业革命",
-              text: "农业革命为什么被称为“史上最大骗局”？",
-              prompt: "粮食增加是否一定意味着个体生活得更好？",
-              answer:
-                "农业提高了总人口和食物产量，却可能让普通人的劳动更繁重、饮食更单一。作者借此区分物种层面的成功与个体生活质量。",
-            },
-            {
-              id: "money",
-              tag: "社会秩序",
-              text: "为什么货币是最普遍也最有效的互信系统？",
-              prompt: "不共享宗教与文化的人，为什么仍愿意接受同一种货币？",
-              answer:
-                "货币把价值转化为可交换的共同尺度。人们不必彼此信任，只需相信其他人也会认可这种媒介，因此它能跨越文化与信仰。",
-            },
-            {
-              id: "happy",
-              tag: "历史与幸福",
-              text: "历史进步是否真的让人类更加幸福？",
-              prompt: "衡量文明进步时，我们忽略了哪些感受？",
-              answer:
-                "技术、财富与权力的增长并不自动等于幸福提升。作者提醒我们把主观体验、期待变化与其他物种的处境也纳入衡量。",
-            },
-          ],
-        },
-        nineteen84: {
-          id: "nineteen84",
-          title: "1984",
-          author: "乔治·奥威尔",
-          kicker: "NINETEEN EIGHTY-FOUR",
-          symbol: "◎",
-          theme: "linear-gradient(150deg,#271b22,#9a3843)",
-          description:
-            "一个关于权力、语言与真实的警示故事：当思想本身也被监视。",
-          progress: 51,
-          source: "preset",
-          questions: [
-            {
-              id: "language",
-              tag: "语言与思想",
-              text: "“新话”为什么能成为控制思想的工具？",
-              prompt: "如果一个词消失了，对应的思想还容易被表达吗？",
-              answer:
-                "“新话”通过缩减词汇来压缩可思考、可表达的范围。它不只是禁止说某些话，而是试图让反抗性的概念最终变得难以形成。",
-            },
-            {
-              id: "truth",
-              tag: "真实与记忆",
-              text: "谁控制过去，为什么就可能控制未来？",
-              prompt: "集体记忆被不断修改时，人还能依据什么判断真实？",
-              answer:
-                "当历史记录可以被持续改写，权力就能塑造人们理解现在的依据，并让自己的选择显得永远正确。个人记忆因此成为脆弱却重要的抵抗。",
-            },
-            {
-              id: "watch",
-              tag: "监视与自律",
-              text: "持续监视如何让人主动约束自己？",
-              prompt: "真正有效的控制是否需要时时有人观看？",
-              answer:
-                "当人无法确定自己何时被观察，就会把外部监视内化为自我审查。控制因此不必每时每刻发生，却能持续影响行为。",
-            },
-            {
-              id: "love",
-              tag: "人性与权力",
-              text: "温斯顿与朱莉娅的关系为什么具有反抗意义？",
-              prompt: "私人感情为何会威胁一个要求绝对忠诚的体制？",
-              answer:
-                "私人感情创造了不受权力完全支配的忠诚与意义。它让个体把另一个具体的人置于抽象体制之前，因此天然构成边界与反抗。",
-            },
-          ],
-        },
       };
       const STORAGE = "readpage_shelf_v2",
         ACTIVITY_STORAGE = "readpage_activity_v1",
@@ -2249,6 +2206,9 @@
                 (q) => !deletedQuestionIds.includes(q.id),
               );
               base.questions.push(...generated);
+              if (Object.prototype.hasOwnProperty.call(x, "author")) {
+                base.author = typeof x.author === "string" ? x.author : "";
+              }
               base.deletedQuestionIds = deletedQuestionIds;
               base.currentChapter = x.currentChapter || null;
               base.chapters = normalizeChapters(x.chapters);
@@ -2737,6 +2697,21 @@
                 .join("")}`,
           )
           .join("");
+      }
+      function openAuthorModal() {
+        const b = book();
+        $("#editAuthorInput").value = b.author || "";
+        $("#authorModal").showModal();
+        setTimeout(() => $("#editAuthorInput").focus(), 60);
+      }
+      function saveAuthor(e) {
+        e.preventDefault();
+        const b = book();
+        b.author = $("#editAuthorInput").value.trim();
+        saveShelf();
+        $("#authorModal").close();
+        render();
+        toast(b.author ? "作者已更新" : "作者已清空");
       }
       function renderView() {
         const b = book(),
@@ -3476,6 +3451,14 @@
         if (e.target === $("#bookModal")) $("#bookModal").close();
       });
       $("#bookForm").addEventListener("submit", addBookAndGenerate);
+      $("#openAuthorModal").addEventListener("click", openAuthorModal);
+      $("#closeAuthorModal").addEventListener("click", () =>
+        $("#authorModal").close(),
+      );
+      $("#authorModal").addEventListener("click", (e) => {
+        if (e.target === $("#authorModal")) $("#authorModal").close();
+      });
+      $("#authorForm").addEventListener("submit", saveAuthor);
       $("#openChapter").addEventListener("click", openChapterModal);
       $("#emptyChapter").addEventListener("click", openChapterModal);
       $("#addChapter").addEventListener("click", () =>

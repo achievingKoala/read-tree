@@ -414,7 +414,8 @@ async function handleQuestions(request, response) {
 1. 问题应优先聚焦本章的人物行动、事件转折、关键语句、作者论证、意象或前后呼应。
 2. 避免“你有什么感想”之类脱离文本也能回答的空泛问题。
 3. 如果没有提供章节原文，不得捏造具体情节；可以用审慎的表述让用户在本章中自行寻找和核对。
-4. questions 必须恰好 ${questionCount} 项，并覆盖 ${questionCount} 个不同的文本角度。
+4. questions 必须恰好 ${questionCount} 个 , 最好覆盖不同角度
+
 
 输出要求：
 请输出严格 JSON，不要 Markdown。
@@ -441,6 +442,8 @@ async function handleChat(request, response) {
   const book = body.book && typeof body.book === "object" ? body.book : {};
   const title = requiredString(book.title, "书名", 80);
   const author = optionalString(book.author, "作者", 80);
+  const chapter = Number(body.chapter);
+  const chapterLabel = optionalString(body.chapterLabel, "章节信息", 140);
   const question = requiredString(body.question, "讨论问题", 300);
   if (!Array.isArray(body.messages) || body.messages.length < 1) {
     throw new ClientError("对话记录不能为空");
@@ -448,6 +451,10 @@ async function handleChat(request, response) {
   if (body.messages.length > 60) {
     throw new ClientError("对话记录过长，请新建对话");
   }
+  const chapterContext =
+    Number.isInteger(chapter) && chapter > 0
+      ? chapterLabel || `第 ${chapter} 章`
+      : chapterLabel || "章节未知";
 
   const messages = body.messages.map((message) => {
     const role = message?.role === "ai" ? "assistant" : message?.role;
@@ -467,6 +474,7 @@ async function handleChat(request, response) {
 
 讨论背景：
 正在讨论《${title}》（作者：${author || "未知"}）的问题：“${question}”。
+问题来源：${chapterContext}。
 
 核心目标：
 把用户引回书中，而不是代替用户阅读或立即给出完整答案。
