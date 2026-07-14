@@ -2936,6 +2936,8 @@
         try {
           const data = await apiFetch("/api/chat", {
             book: { title: b.title, author: b.author || "" },
+            chapter: q.chapter || null,
+            chapterLabel: q.chapterLabel || "",
             question: q.text,
             messages: pendingMessages,
           });
