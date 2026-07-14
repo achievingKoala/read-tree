@@ -525,24 +525,38 @@
 
       .book-meta-actions {
         display: flex;
+        gap: 8px;
         justify-content: flex-start;
         margin-top: 12px;
       }
 
-      .edit-author-btn {
+      .edit-author-btn,
+      .delete-book-btn {
         padding: 7px 10px;
         border: 1px solid var(--line);
         border-radius: 9px;
-        color: var(--primary);
         background: #fff;
         font-size: 11px;
         font-weight: 700;
         cursor: pointer;
       }
 
+      .edit-author-btn {
+        color: var(--primary);
+      }
+
       .edit-author-btn:hover {
         border-color: #bab4f5;
         background: #faf9ff;
+      }
+
+      .delete-book-btn {
+        color: #b23948;
+      }
+
+      .delete-book-btn:hover {
+        border-color: #efb7bf;
+        background: #fff6f7;
       }
 
       .progress-row {
@@ -583,6 +597,13 @@
         min-height: 0;
         overflow-y: auto;
         scrollbar-width: thin;
+      }
+
+      .shelf-empty {
+        padding: 12px 4px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.6;
       }
 
       .shelf-item {
@@ -1818,6 +1839,9 @@
                 <button class="edit-author-btn" id="openAuthorModal">
                   修改作者
                 </button>
+                <button class="delete-book-btn" id="deleteBookBtn">
+                  删除书籍
+                </button>
               </div>
               <div class="progress-row">
                 <span>阅读进度</span><strong id="progressText"></strong>
@@ -2076,53 +2100,7 @@
     <div class="toast" id="toast" role="status"></div>
 
     <script>
-      const PRESETS = {
-        prince: {
-          id: "prince",
-          title: "小王子",
-          author: "安托万·德·圣埃克苏佩里",
-          kicker: "LE PETIT PRINCE",
-          symbol: "✦",
-          theme: "linear-gradient(150deg,#27253a,#655be3)",
-          description: "一场跨越星球的旅行，一次关于爱、责任与成长的温柔追问。",
-          progress: 68,
-          source: "preset",
-          questions: [
-            {
-              id: "leave",
-              tag: "人物与选择",
-              text: "小王子为什么决定离开自己的星球？",
-              prompt: "说说你觉得他真正想逃离的是什么？",
-              answer:
-                "小王子的离开不只是因为与玫瑰闹了别扭。更深一层看，他还不懂该怎样面对爱里的骄傲、误解和责任，于是选择用旅行寻找答案。\n\n离开有时并非放弃，而是一个人尚未学会留下。",
-            },
-            {
-              id: "tame",
-              tag: "关系与成长",
-              text: "狐狸所说的“驯养”意味着什么？",
-              prompt: "在你看来，建立关系会带来什么改变？",
-              answer:
-                "“驯养”可以理解为建立联结。因为投入时间、耐心和关注，两个普通的存在才变得不可替代。联结带来快乐，也意味着愿意承担责任。",
-            },
-            {
-              id: "rose",
-              tag: "爱与责任",
-              text: "玫瑰对小王子来说究竟代表什么？",
-              prompt: "她为什么能与花园里成千上万朵玫瑰不同？",
-              answer:
-                "玫瑰代表一段被亲自照料过的关系。真正让她独特的不是外表，而是小王子投入其中的时间与感情。爱不是发现完美，而是共同创造独一无二。",
-            },
-            {
-              id: "numbers",
-              tag: "成人世界",
-              text: "为什么成年人总喜欢用数字理解世界？",
-              prompt: "数字让人更接近真相，还是更容易忽略真相？",
-              answer:
-                "数字提供确定感，但只相信可量化的信息，会让感受、关系与想象力被排除。数字可以描述事物，却未必能解释它为什么值得珍惜。",
-            },
-          ],
-        },
-      };
+      const PRESETS = {};
       const STORAGE = "readpage_shelf_v2",
         ACTIVITY_STORAGE = "readpage_activity_v1",
         CHATS_STORAGE = "readpage_chats_v1",
@@ -2182,14 +2160,14 @@
           .sort((a, b) => a.number - b.number);
       }
       function loadShelf() {
+        const savedShelf = localStorage.getItem(STORAGE);
         let raw;
         try {
-          raw = JSON.parse(localStorage.getItem(STORAGE) || "[]");
+          raw = JSON.parse(savedShelf || "[]");
         } catch (e) {
           raw = [];
         }
-        if (!Array.isArray(raw) || !raw.length)
-          raw = [{ id: "prince", source: "preset" }];
+        if (!Array.isArray(raw)) raw = [];
         state.books = raw
           .map((x) => {
             if (x.source === "preset" && PRESETS[x.id]) {
@@ -2243,7 +2221,7 @@
             };
           })
           .filter((x) => x && x.id);
-        state.activeBookId = state.books[0].id;
+        state.activeBookId = state.books[0]?.id || null;
       }
       function saveShelf() {
         localStorage.setItem(STORAGE, JSON.stringify(state.books));
@@ -2594,8 +2572,12 @@
         );
       }
       function render() {
-        const b = book(),
-          progress = Math.max(0, Math.min(100, Number(b.progress) || 0));
+        const b = book();
+        if (!b) {
+          renderEmptyShelf();
+          return;
+        }
+        const progress = Math.max(0, Math.min(100, Number(b.progress) || 0));
         $("#cover").style.setProperty("--theme", b.theme);
         $("#coverKicker").textContent = b.kicker || "MY READING";
         $("#coverTitle").textContent = b.title;
@@ -2606,11 +2588,48 @@
         $("#progressText").textContent = `${progress}%`;
         $("#progressBar").style.width = `${progress}%`;
         $("#workspaceTitle").textContent = `和《${b.title}》聊一聊`;
+        $("#openChapter").disabled = state.generating;
+        $("#emptyChapter").disabled = state.generating;
+        $("#openAuthorModal").disabled = false;
+        $("#deleteBookBtn").disabled = false;
         renderShelf();
         renderQuestions();
         renderView();
       }
+      function renderEmptyShelf() {
+        $("#cover").style.setProperty(
+          "--theme",
+          "linear-gradient(150deg,#3f4352,#8b91a8)",
+        );
+        $("#coverKicker").textContent = "MY READING";
+        $("#coverTitle").textContent = "暂无图书";
+        $("#coverAuthor").textContent = "点击 + 添加一本书";
+        $("#coverSymbol").textContent = "＋";
+        $("#bookDescription").textContent =
+          "书架还是空的，添加图书后会自动生成第一批阅读问题。";
+        $("#progressText").textContent = "0%";
+        $("#progressBar").style.width = "0%";
+        $("#workspaceTitle").textContent = "先添加一本书";
+        $("#subtitle").textContent = "添加图书后，再开始生成和讨论问题";
+        $("#badge").textContent = "";
+        $("#questions").innerHTML = "";
+        $("#questionView").classList.add("hidden");
+        $("#emptyState").classList.remove("hidden");
+        $("#chatView").classList.remove("active");
+        $("#workspace").classList.remove("chatting");
+        $("#backBtn").classList.add("hidden");
+        $("#openChapter").disabled = true;
+        $("#emptyChapter").disabled = true;
+        $("#openAuthorModal").disabled = true;
+        $("#deleteBookBtn").disabled = true;
+        renderShelf();
+      }
       function renderShelf() {
+        if (!state.books.length) {
+          $("#shelf").innerHTML =
+            '<div class="shelf-empty">还没有图书。点击上方 + 添加一本。</div>';
+          return;
+        }
         $("#shelf").innerHTML = state.books
           .map(
             (b) =>
@@ -2700,6 +2719,7 @@
       }
       function openAuthorModal() {
         const b = book();
+        if (!b) return;
         $("#editAuthorInput").value = b.author || "";
         $("#authorModal").showModal();
         setTimeout(() => $("#editAuthorInput").focus(), 60);
@@ -2707,11 +2727,32 @@
       function saveAuthor(e) {
         e.preventDefault();
         const b = book();
+        if (!b) return;
         b.author = $("#editAuthorInput").value.trim();
         saveShelf();
         $("#authorModal").close();
         render();
         toast(b.author ? "作者已更新" : "作者已清空");
+      }
+      function deleteCurrentBook() {
+        const b = book();
+        if (!b) return;
+        if (!window.confirm(`确定删除《${b.title}》吗？相关对话记录也会删除。`)) {
+          return;
+        }
+        state.books = state.books.filter((item) => item.id !== b.id);
+        Object.keys(state.chats).forEach((key) => {
+          if (key.startsWith(b.id + "::")) {
+            delete state.chats[key];
+          }
+        });
+        delete state.activeQuestions[b.id];
+        delete state.bookViews[b.id];
+        state.activeBookId = state.books[0]?.id || null;
+        saveShelf();
+        saveChats();
+        render();
+        toast("图书已删除");
       }
       function renderView() {
         const b = book(),
@@ -3452,6 +3493,7 @@
       });
       $("#bookForm").addEventListener("submit", addBookAndGenerate);
       $("#openAuthorModal").addEventListener("click", openAuthorModal);
+      $("#deleteBookBtn").addEventListener("click", deleteCurrentBook);
       $("#closeAuthorModal").addEventListener("click", () =>
         $("#authorModal").close(),
       );
