@@ -321,6 +321,34 @@
         background: linear-gradient(90deg, var(--primary), #9189f8);
       }
 
+      .sidebar-goal {
+        margin: 12px 0 4px;
+        padding: 9px 10px;
+        border: 1px solid var(--line);
+        border-radius: 11px;
+        background: #fbfbfe;
+      }
+
+      .sidebar-goal-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .sidebar-goal-row strong {
+        color: var(--ink);
+        font-size: 13px;
+      }
+
+      .sidebar-goal .record-progress {
+        height: 4px;
+        margin-top: 7px;
+      }
+
       .goal-form {
         display: flex;
         align-items: end;
@@ -436,6 +464,10 @@
         font-size: 16px;
       }
 
+      .library-main {
+        display: block;
+      }
+
       .add-btn {
         display: grid;
         place-items: center;
@@ -457,14 +489,15 @@
       }
 
       .current-cover {
+        display: none;
         position: relative;
         overflow: hidden;
-        min-height: 188px;
-        padding: 22px;
+        min-height: 116px;
+        padding: 12px;
         border-radius: 16px;
         color: #fff;
         background: var(--theme, linear-gradient(150deg, #27253a, #655be3));
-        box-shadow: 0 15px 32px rgba(47, 43, 101, 0.2);
+        box-shadow: 0 12px 24px rgba(47, 43, 101, 0.18);
       }
 
       .current-cover:before {
@@ -483,10 +516,10 @@
 
       .cover-symbol {
         position: absolute;
-        right: 20px;
-        bottom: 16px;
+        right: 12px;
+        bottom: 10px;
         color: #ffc46e;
-        font-size: 39px;
+        font-size: 24px;
       }
 
       .cover-kicker {
@@ -498,36 +531,47 @@
 
       .current-cover h1 {
         position: relative;
-        margin: 40px 0 6px;
+        overflow: hidden;
+        margin: 20px 0 5px;
         font-family: Georgia, "Songti SC", serif;
-        font-size: 27px;
+        font-size: 18px;
         font-weight: 600;
         letter-spacing: 0.03em;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .cover-author {
+        display: block;
         position: relative;
+        overflow: hidden;
         color: rgba(255, 255, 255, 0.72);
         font-size: 11px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .book-summary {
-        padding: 15px 3px 16px;
+        padding: 0 3px 10px;
         border-bottom: 1px solid var(--line);
       }
 
       .book-summary p {
+        display: -webkit-box;
+        overflow: hidden;
         margin: 0;
         color: var(--muted);
         font-size: 12px;
-        line-height: 1.65;
+        line-height: 1.5;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
       }
 
       .book-meta-actions {
         display: flex;
         gap: 8px;
         justify-content: flex-start;
-        margin-top: 12px;
+        margin-top: 8px;
       }
 
       .edit-author-btn,
@@ -573,16 +617,17 @@
       }
 
       .progress-row {
-        display: flex;
+        display: none;
         justify-content: space-between;
-        margin-top: 13px;
+        margin-top: 9px;
         color: var(--muted);
         font-size: 11px;
       }
 
       .progress-track {
+        display: none;
         height: 5px;
-        margin-top: 7px;
+        margin-top: 5px;
         border-radius: 9px;
         background: #ececf3;
         overflow: hidden;
@@ -1604,17 +1649,16 @@
         }
 
         .library-main {
-          display: grid;
-          grid-template-columns: 160px 1fr;
-          gap: 15px;
+          display: block;
         }
 
         .current-cover {
-          min-height: 175px;
+          min-height: 116px;
+          padding: 12px;
         }
 
         .book-summary {
-          padding-top: 5px;
+          padding-top: 2px;
         }
 
         .shelf {
@@ -1683,17 +1727,17 @@
         }
 
         .library-main {
-          grid-template-columns: 105px 1fr;
+          display: block;
         }
 
         .current-cover {
-          min-height: 140px;
-          padding: 13px;
+          min-height: 112px;
+          padding: 11px;
         }
 
         .current-cover h1 {
-          margin-top: 28px;
-          font-size: 19px;
+          margin-top: 18px;
+          font-size: 17px;
         }
 
         .cover-author {
@@ -1701,7 +1745,9 @@
         }
 
         .cover-symbol {
-          font-size: 26px;
+          right: 11px;
+          bottom: 10px;
+          font-size: 22px;
         }
 
         .book-summary p {
@@ -1839,6 +1885,12 @@
               ＋
             </button>
           </div>
+          <div class="sidebar-goal">
+            <div class="sidebar-goal-row">
+              <span>今日目标</span><strong id="todayCount">0 / 5</strong>
+            </div>
+            <div class="record-progress"><i id="todayProgress"></i></div>
+          </div>
           <div class="library-main">
             <div class="current-cover" id="cover">
               <span class="cover-kicker" id="coverKicker"></span>
@@ -1941,19 +1993,6 @@
             </div>
             <button class="primary-btn" type="submit">保存目标</button>
           </form>
-        </div>
-        <div class="records-summary">
-          <article class="record-card">
-            <small>今日提交</small><strong id="todayCount">0 / 5</strong>
-            <div class="record-progress"><i id="todayProgress"></i></div>
-          </article>
-          <article class="record-card">
-            <small>连续达标</small
-            ><strong><span id="streakCount">0</span> 天</strong>
-          </article>
-          <article class="record-card">
-            <small>累计提交</small><strong id="totalCount">0</strong>
-          </article>
         </div>
         <div class="history-section">
           <div class="history-head">
@@ -2401,7 +2440,7 @@
           activity.days[today] = { count: 0, goal: activity.dailyGoal };
         activity.days[today].count++;
         saveActivity();
-        if (currentPage === "records") renderRecords();
+        renderRecords();
       }
       function calculateStreak() {
         const today = new Date(),
@@ -2444,8 +2483,8 @@
           100,
           (todayItem.count / todayItem.goal) * 100,
         )}%`;
-        $("#streakCount").textContent = calculateStreak();
-        $("#totalCount").textContent = total;
+        if ($("#streakCount")) $("#streakCount").textContent = calculateStreak();
+        if ($("#totalCount")) $("#totalCount").textContent = total;
         $("#historyTotal").textContent = dates.length
           ? `共 ${dates.length} 天`
           : "尚无记录";
@@ -3689,6 +3728,7 @@
       loadActivity();
       loadChats();
       loadNotebook();
+      renderRecords();
       render();
     </script>
   </body>
