@@ -1408,6 +1408,47 @@
         padding: 11px 18px;
       }
 
+      .book-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+
+      .book-modal-actions .secondary-btn,
+      .book-modal-actions .primary-btn {
+        justify-self: auto;
+        padding: 11px 18px;
+      }
+
+      .book-chapter-preview {
+        display: grid;
+        gap: 10px;
+        max-height: 240px;
+        overflow-y: auto;
+        padding: 13px;
+        border: 1px solid var(--line);
+        border-radius: 13px;
+        background: #fbfbfd;
+      }
+
+      .book-chapter-preview strong {
+        font-size: 13px;
+      }
+
+      .book-chapter-preview ol {
+        display: grid;
+        gap: 7px;
+        margin: 0;
+        padding-left: 20px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .book-chapter-preview li span {
+        color: var(--ink);
+        font-weight: 700;
+      }
+
       .toast {
         position: fixed;
         left: 50%;
@@ -2045,7 +2086,20 @@
             <label for="customAuthor">作者</label
             ><input id="customAuthor" maxlength="40" placeholder="作者姓名" />
           </div>
-          <button class="primary-btn" id="addBookBtn">添加图书</button>
+          <div class="book-chapter-preview hidden" id="bookChapterPreview">
+            <strong id="bookChapterPreviewTitle">已获取章节</strong>
+            <ol id="bookChapterPreviewList"></ol>
+          </div>
+          <div class="book-modal-actions">
+            <button
+              class="secondary-btn"
+              id="fetchBookChaptersBtn"
+              type="button"
+            >
+              获取章节
+            </button>
+            <button class="primary-btn" id="addBookBtn">添加图书</button>
+          </div>
         </form>
       </div>
     </dialog>
@@ -2180,7 +2234,8 @@
       };
       const activity = { dailyGoal: 5, pendingGoal: null, days: {} };
       let currentPage = "reading",
-        visibleHistory = 30;
+        visibleHistory = 30,
+        pendingBookChapters = null;
       const $ = (s) => document.querySelector(s),
         clone = (o) => JSON.parse(JSON.stringify(o));
       function makeId(prefix) {
@@ -2716,11 +2771,17 @@
         const b = book(),
           groups = [];
         b.questions.forEach((q) => {
-          const label = q.batchLabel || "第 1 批 · 之前内容";
-          let group = groups.find((g) => g.label === label);
+          const batchLabel = q.batchLabel || "第 1 批 · 之前内容",
+            displayBatchLabel = batchLabel.replace(/\s*·\s*自动生成/g, ""),
+            chapterLabel = q.chapterLabel || "全书讨论",
+            label = `${chapterLabel} · ${displayBatchLabel}`,
+            key = `${chapterLabel}::${batchLabel}`;
+          let group = groups.find((g) => g.key === key);
           if (!group) {
             group = {
+              key,
               label,
+              batchLabel,
               createdAt: q.batchCreatedAt || "",
               items: [],
             };
@@ -2732,8 +2793,8 @@
           group.items.push(q);
         });
         groups.sort((a, c) => {
-          const batchA = parseBatchNumber(a.label),
-            batchC = parseBatchNumber(c.label);
+          const batchA = parseBatchNumber(a.batchLabel),
+            batchC = parseBatchNumber(c.batchLabel);
           if (batchA !== batchC) {
             return batchC - batchA;
           }
@@ -3175,6 +3236,7 @@
         $("#openChapter").disabled = active;
         $("#emptyChapter").disabled = active;
         $("#addBookBtn").disabled = active;
+        $("#fetchBookChaptersBtn").disabled = active;
         updateGenerationButtonLabels();
         renderView();
       }
@@ -3189,25 +3251,117 @@
           ? "生成中…"
           : idleLabel;
       }
-      function addBook(e) {
-        e.preventDefault();
+      function readBookModalPayload() {
         const title = $("#customTitle").value.trim(),
           author = $("#customAuthor").value.trim();
-        if (!title) return;
+        if (!title) {
+          $("#bookForm").reportValidity();
+          return null;
+        }
         if (
           state.books.some((b) => b.title.toLowerCase() === title.toLowerCase())
         ) {
           toast("同名图书已经在书架中了");
+          return null;
+        }
+        return { title, author };
+      }
+      function modalPayloadMatchesPending(payload) {
+        return (
+          pendingBookChapters &&
+          pendingBookChapters.title === payload.title &&
+          pendingBookChapters.author === payload.author
+        );
+      }
+      function renderBookChapterPreview() {
+        if (!pendingBookChapters?.chapters?.length) {
+          $("#bookChapterPreview").classList.add("hidden");
+          $("#bookChapterPreviewList").innerHTML = "";
           return;
         }
+        $("#bookChapterPreviewTitle").textContent = `已获取 ${
+          pendingBookChapters.chapters.length
+        } 个章节`;
+        $("#bookChapterPreviewList").innerHTML = pendingBookChapters.chapters
+          .map(
+            (chapter) =>
+              `<li><span>第 ${chapter.number} 章</span> · ${escapeHtml(
+                chapter.title,
+              )}</li>`,
+          )
+          .join("");
+        $("#bookChapterPreview").classList.remove("hidden");
+      }
+      function clearBookChapterPreview() {
+        pendingBookChapters = null;
+        renderBookChapterPreview();
+      }
+      function clearBookChapterPreviewIfChanged() {
+        const payload = {
+          title: $("#customTitle").value.trim(),
+          author: $("#customAuthor").value.trim(),
+        };
+        if (pendingBookChapters && !modalPayloadMatchesPending(payload)) {
+          clearBookChapterPreview();
+        }
+      }
+      function addBookToShelf(title, author, chapterData = null) {
         const b = createCustomBook(title, author);
+        if (chapterData) {
+          b.chapters = clone(chapterData.chapters);
+          b.chapterConfidence = chapterData.chapterConfidence;
+          b.chapterWarning = chapterData.chapterWarning;
+          b.currentChapter = b.chapters[0]?.number || null;
+        }
         state.books.push(b);
         state.activeBookId = b.id;
         saveShelf();
+        return b;
+      }
+      function addBook(e) {
+        e.preventDefault();
+        const payload = readBookModalPayload();
+        if (!payload) return;
+        addBookToShelf(
+          payload.title,
+          payload.author,
+          modalPayloadMatchesPending(payload) ? pendingBookChapters : null,
+        );
         $("#bookModal").close();
         e.target.reset();
+        clearBookChapterPreview();
         render();
         toast("图书已添加，可单独生成问题");
+      }
+      function setBookChapterFetchBusy(active) {
+        $("#fetchBookChaptersBtn").disabled = active;
+        $("#addBookBtn").disabled = active;
+        $("#fetchBookChaptersBtn").textContent = active
+          ? "获取中…"
+          : "获取章节";
+      }
+      async function addBookAndFetchChapters() {
+        if (state.generating) return;
+        const payload = readBookModalPayload();
+        if (!payload) return;
+        const b = createCustomBook(payload.title, payload.author);
+        setBookChapterFetchBusy(true);
+        try {
+          await fetchChaptersForBook(b, false);
+          pendingBookChapters = {
+            title: payload.title,
+            author: payload.author,
+            chapters: clone(b.chapters),
+            chapterConfidence: b.chapterConfidence,
+            chapterWarning: b.chapterWarning,
+          };
+          renderBookChapterPreview();
+          toast("章节已获取，请确认后添加图书");
+        } catch (error) {
+          toast(error.message || "章节获取失败，可以稍后再试");
+        } finally {
+          setBookChapterFetchBusy(false);
+        }
       }
       function addQuestionsToBatch(b, chapterInfo, questionsData, batchNumber) {
         const batchId = `batch-${Date.now().toString(36)}-${Math.random()
@@ -3272,7 +3426,7 @@
           setGenerationBusy(false);
         }
       }
-      async function fetchChaptersForBook(b) {
+      async function fetchChaptersForBook(b, shouldSave = true) {
         const data = await apiFetch("/api/chapters", {
           title: b.title,
           author: b.author || "",
@@ -3281,7 +3435,9 @@
         if (!b.chapters.some((chapter) => chapter.number === b.currentChapter)) {
           b.currentChapter = b.chapters[0]?.number || null;
         }
-        saveShelf();
+        if (shouldSave) {
+          saveShelf();
+        }
         return b.chapters;
       }
       function nextChapterForBatch(b) {
@@ -3616,6 +3772,7 @@
       });
       $("#openModal").addEventListener("click", () => {
         $("#bookForm").reset();
+        clearBookChapterPreview();
         $("#bookModal").showModal();
         setTimeout(() => $("#customTitle").focus(), 60);
       });
@@ -3624,6 +3781,18 @@
         if (e.target === $("#bookModal")) $("#bookModal").close();
       });
       $("#bookForm").addEventListener("submit", addBook);
+      $("#fetchBookChaptersBtn").addEventListener(
+        "click",
+        addBookAndFetchChapters,
+      );
+      $("#customTitle").addEventListener(
+        "input",
+        clearBookChapterPreviewIfChanged,
+      );
+      $("#customAuthor").addEventListener(
+        "input",
+        clearBookChapterPreviewIfChanged,
+      );
       $("#openBookEditModal").addEventListener("click", openBookEditModal);
       $("#deleteBookBtn").addEventListener("click", deleteCurrentBook);
       $("#closeBookEditModal").addEventListener("click", () =>
