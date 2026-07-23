@@ -1927,7 +1927,7 @@
             </div>
             <div class="header-actions">
               <button class="chapter-btn" id="openChapter">
-                <span>✦</span><span>再生成一批</span></button
+                <span>✦</span><span>生成问题</span></button
               ><button class="ghost-btn hidden" id="backBtn">
                 <span>←</span><span>返回问题</span>
               </button>
@@ -1947,10 +1947,10 @@
                 <span class="empty-icon">⌛</span>
                 <h3>等待第一批问题</h3>
                 <p>
-                  输入书名和作者后，AI 会先整理章节，再自动生成第一批值得讨论的问题。
+                  图书已在书架中。点击下方按钮，选择章节后再生成第一批值得讨论的问题。
                 </p>
                 <button class="chapter-btn" id="emptyChapter">
-                  <span>✦</span><span>再生成一批</span>
+                  <span>✦</span><span>生成第一批问题</span>
                 </button>
               </div>
             </div>
@@ -2045,13 +2045,7 @@
             <label for="customAuthor">作者</label
             ><input id="customAuthor" maxlength="40" placeholder="作者姓名" />
           </div>
-          <div class="generating" id="bookGenerating">
-            <span class="thinking"><i></i><i></i><i></i></span
-            ><span>AI 正在整理章节并生成第一批问题……</span>
-          </div>
-          <button class="primary-btn" id="addBookBtn">
-            添加并生成 3 个问题
-          </button>
+          <button class="primary-btn" id="addBookBtn">添加图书</button>
         </form>
       </div>
     </dialog>
@@ -2656,6 +2650,7 @@
         $("#emptyChapter").disabled = state.generating;
         $("#openBookEditModal").disabled = false;
         $("#deleteBookBtn").disabled = false;
+        updateGenerationButtonLabels();
         renderShelf();
         renderQuestions();
         renderView();
@@ -2670,7 +2665,7 @@
         $("#coverAuthor").textContent = "点击 + 添加一本书";
         $("#coverSymbol").textContent = "＋";
         $("#bookDescription").textContent =
-          "书架还是空的，添加图书后会自动生成第一批阅读问题。";
+          "书架还是空的，先添加图书，再选择章节生成阅读问题。";
         $("#progressText").textContent = "0%";
         $("#progressBar").style.width = "0%";
         $("#workspaceTitle").textContent = "先添加一本书";
@@ -3180,20 +3175,25 @@
         $("#openChapter").disabled = active;
         $("#emptyChapter").disabled = active;
         $("#addBookBtn").disabled = active;
-        $("#bookGenerating").classList.toggle("active", active);
-        $("#openChapter span:last-child").textContent = active
-          ? "生成中…"
-          : "再生成一批";
-        $("#emptyChapter span:last-child").textContent = active
-          ? "生成中…"
-          : "再生成一批";
+        updateGenerationButtonLabels();
         renderView();
       }
-      async function addBookAndGenerate(e) {
+      function updateGenerationButtonLabels() {
+        const b = book(),
+          hasQuestions = !!b?.questions?.length,
+          idleLabel = hasQuestions ? "再生成一批" : "生成第一批问题";
+        $("#openChapter span:last-child").textContent = state.generating
+          ? "生成中…"
+          : idleLabel;
+        $("#emptyChapter span:last-child").textContent = state.generating
+          ? "生成中…"
+          : idleLabel;
+      }
+      function addBook(e) {
         e.preventDefault();
         const title = $("#customTitle").value.trim(),
           author = $("#customAuthor").value.trim();
-        if (!title || state.generating) return;
+        if (!title) return;
         if (
           state.books.some((b) => b.title.toLowerCase() === title.toLowerCase())
         ) {
@@ -3205,14 +3205,9 @@
         state.activeBookId = b.id;
         saveShelf();
         $("#bookModal").close();
+        e.target.reset();
         render();
-        try {
-          await generateInitialBatch(b.id);
-          e.target.reset();
-          toast("第一批 3 个问题已生成");
-        } catch (error) {
-          toast(error.message || "问题生成失败，请稍后重试");
-        }
+        toast("图书已添加，可单独生成问题");
       }
       function addQuestionsToBatch(b, chapterInfo, questionsData, batchNumber) {
         const batchId = `batch-${Date.now().toString(36)}-${Math.random()
@@ -3621,7 +3616,6 @@
       });
       $("#openModal").addEventListener("click", () => {
         $("#bookForm").reset();
-        $("#bookGenerating").classList.remove("active");
         $("#bookModal").showModal();
         setTimeout(() => $("#customTitle").focus(), 60);
       });
@@ -3629,7 +3623,7 @@
       $("#bookModal").addEventListener("click", (e) => {
         if (e.target === $("#bookModal")) $("#bookModal").close();
       });
-      $("#bookForm").addEventListener("submit", addBookAndGenerate);
+      $("#bookForm").addEventListener("submit", addBook);
       $("#openBookEditModal").addEventListener("click", openBookEditModal);
       $("#deleteBookBtn").addEventListener("click", deleteCurrentBook);
       $("#closeBookEditModal").addEventListener("click", () =>
