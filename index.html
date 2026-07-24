@@ -3400,32 +3400,6 @@
         b.chapterConfidence = data.confidence;
         b.chapterWarning = typeof data.warning === "string" ? data.warning : "";
       }
-      async function generateInitialBatch(bookId) {
-        if (state.generating) return;
-        const b = state.books.find((item) => item.id === bookId);
-        if (!b) return;
-        setGenerationBusy(true);
-        try {
-          const data = await apiFetch("/api/initial-batch", {
-            title: b.title,
-            author: b.author || "",
-          });
-          applyChapterPayload(b, data);
-          if (!Array.isArray(data.questions) || data.questions.length !== 3) {
-            throw new Error("AI 返回的问题格式无效，请重试");
-          }
-          const chapterInfo =
-            b.chapters.find(
-              (chapter) => chapter.number === Number(data.selectedChapter),
-            ) || b.chapters[0];
-          addQuestionsToBatch(b, chapterInfo, data.questions, nextBatchNumber(b));
-          state.bookViews[b.id] = false;
-          saveShelf();
-          render();
-        } finally {
-          setGenerationBusy(false);
-        }
-      }
       async function fetchChaptersForBook(b, shouldSave = true) {
         const data = await apiFetch("/api/chapters", {
           title: b.title,
@@ -3453,14 +3427,15 @@
         if (state.generating) return;
         const b = state.books.find((item) => item.id === bookId);
         if (!b) return;
+        if (!b.chapters.length) {
+          toast("请先通过按钮获取章节目录后再生成问题");
+          return;
+        }
         setGenerationBusy(true);
         try {
-          if (!b.chapters.length) {
-            await fetchChaptersForBook(b);
-          }
           const chapterInfo = nextChapterForBatch(b);
           if (!chapterInfo) {
-            throw new Error("请先获取章节目录后再生成问题");
+            throw new Error("请先通过按钮获取章节目录后再生成问题");
           }
           const context = chapterInfo.summary || "",
             contextSource = context ? "ai-summary" : "none",
@@ -3485,7 +3460,25 @@
           setGenerationBusy(false);
         }
       }
+      function renderEmptyChapterOptions() {
+        $("#chapterSelect").innerHTML =
+          "<option>请点击获取章节目录</option>";
+        $("#chapterSelect").disabled = true;
+        $("#editChapter").disabled = true;
+        $("#refreshChapters").textContent = "获取章节";
+        $("#generateBtn").disabled = true;
+        $("#chapterContext").value = "";
+        $("#chapterContext").dataset.aiSummary = "";
+        $("#contextNote").textContent =
+          "先获取章节目录，再选择章节生成问题。";
+        $("#contextNote").classList.remove("ai-draft");
+        renderChapterWarning({
+          chapterConfidence: "",
+          chapterWarning: "",
+        });
+      }
       function renderChapterOptions(b) {
+        $("#refreshChapters").textContent = "重新获取";
         $("#chapterSelect").innerHTML = b.chapters
           .map(
             (chapter) =>
@@ -3640,14 +3633,12 @@
           saveShelf();
           renderChapterOptions(b);
           render();
-          if (refresh) toast("AI 目录和章节简介已更新");
+          toast(refresh ? "AI 目录和章节简介已更新" : "章节目录已获取");
         } catch (error) {
           if (b.chapters.length) {
             renderChapterOptions(b);
           } else {
-            $("#chapterSelect").innerHTML =
-              "<option>章节目录获取失败，可手动新增</option>";
-            $("#editChapter").disabled = true;
+            renderEmptyChapterOptions();
           }
           toast(error.message || "章节目录获取失败，可以手动新增章节");
         } finally {
@@ -3664,7 +3655,7 @@
           renderChapterOptions(b);
           return;
         }
-        await fetchChapterCatalog();
+        renderEmptyChapterOptions();
       }
       async function submitChapter(e) {
         e.preventDefault();
@@ -3811,6 +3802,11 @@
         openChapterEditor("edit"),
       );
       $("#refreshChapters").addEventListener("click", () => {
+        const b = book();
+        if (!b?.chapters?.length) {
+          fetchChapterCatalog();
+          return;
+        }
         if (
           window.confirm(
             "重新获取会替换全部章节目录和简介，包括手动新增或改名的章节。确定继续吗？",
