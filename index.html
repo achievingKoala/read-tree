@@ -1561,12 +1561,43 @@
 
       .chapter-editor {
         display: grid;
-        grid-template-columns: 110px minmax(0, 1fr) auto auto;
-        gap: 8px;
+        grid-template-columns: 110px minmax(0, 1fr);
+        gap: 10px;
         padding: 12px;
         border: 1px solid #ddd9ff;
         border-radius: 12px;
         background: var(--soft);
+      }
+
+      .chapter-editor-head {
+        display: flex;
+        grid-column: 1 / -1;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
+      .chapter-editor-title {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 800;
+      }
+
+      .chapter-editor-hint {
+        margin: 0;
+        color: var(--muted);
+        font-size: 11px;
+      }
+
+      .chapter-editor-field {
+        display: grid;
+        gap: 6px;
+      }
+
+      .chapter-editor-field label {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
       }
 
       .chapter-editor input {
@@ -1576,6 +1607,13 @@
         border-radius: 9px;
         outline: 0;
         background: #fff;
+      }
+
+      .chapter-editor-actions {
+        display: flex;
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+        gap: 8px;
       }
 
       .chapter-warning {
@@ -1666,8 +1704,15 @@
         }
 
         .chapter-picker-row .chapter-select,
-        .chapter-editor input {
+        .chapter-editor-head,
+        .chapter-editor-actions {
           grid-column: 1/-1;
+        }
+
+        .chapter-editor-head {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 3px;
         }
 
         .layout {
@@ -2155,7 +2200,7 @@
           <div class="chapter-picker-row">
             <select class="chapter-select" id="chapterSelect"></select>
             <button class="chapter-manage-btn" id="addChapter" type="button">
-              ＋ 新增
+              ＋ 插入
             </button>
             <button class="chapter-manage-btn" id="editChapter" type="button">
               修改名称
@@ -2171,21 +2216,37 @@
         </div>
         <div class="chapter-warning hidden" id="chapterWarning"></div>
         <div class="chapter-editor hidden" id="chapterEditor">
-          <input
-            id="chapterNumber"
-            type="number"
-            min="1"
-            max="9999"
-            step="1"
-            placeholder="章节编号"
-          />
-          <input id="chapterTitle" maxlength="120" placeholder="章节名称" />
-          <button class="primary-btn" id="saveChapter" type="button">
-            保存
-          </button>
-          <button class="secondary-btn" id="cancelChapterEdit" type="button">
-            取消
-          </button>
+          <div class="chapter-editor-head">
+            <p class="chapter-editor-title" id="chapterEditorTitle">
+              插入章节
+            </p>
+            <p class="chapter-editor-hint" id="chapterEditorHint">
+              填已有编号会把该章节和后面的章节自动后移。
+            </p>
+          </div>
+          <div class="chapter-editor-field">
+            <label for="chapterNumber">章节编号</label>
+            <input
+              id="chapterNumber"
+              type="number"
+              min="1"
+              max="9999"
+              step="1"
+              placeholder="例如：3"
+            />
+          </div>
+          <div class="chapter-editor-field">
+            <label for="chapterTitle">章节名称</label>
+            <input id="chapterTitle" maxlength="120" placeholder="章节名称" />
+          </div>
+          <div class="chapter-editor-actions">
+            <button class="secondary-btn" id="cancelChapterEdit" type="button">
+              取消
+            </button>
+            <button class="primary-btn" id="saveChapter" type="button">
+              保存
+            </button>
+          </div>
         </div>
         <div class="field">
           <label for="chapterContext">章节内容或摘要（可选）</label
@@ -3523,6 +3584,29 @@
         $("#chapterEditor").dataset.mode = "";
         $("#chapterEditor").dataset.originalNumber = "";
       }
+      function nextChapterNumber(chapters) {
+        const numbers = chapters.map((chapter) => chapter.number);
+        if (!numbers.length) {
+          return 1;
+        }
+        return Math.max(...numbers) + 1;
+      }
+      function shiftChaptersForInsert(b, number) {
+        if (nextChapterNumber(b.chapters) > 9999) {
+          throw new Error("章节编号已到 9999，无法继续插入");
+        }
+        b.chapters
+          .filter((chapter) => chapter.number >= number)
+          .sort((a, c) => c.number - a.number)
+          .forEach((chapter) => {
+            chapter.number += 1;
+          });
+        b.questions.forEach((question) => {
+          if (question.chapter >= number) {
+            question.chapter += 1;
+          }
+        });
+      }
       function openChapterEditor(mode) {
         const b = book(),
           selectedNumber = Number($("#chapterSelect").value),
@@ -3530,18 +3614,26 @@
             mode === "edit"
               ? b.chapters.find((chapter) => chapter.number === selectedNumber)
               : null;
+        const insertNumber =
+          selectedNumber || Math.min(nextChapterNumber(b.chapters), 9999);
         if (mode === "edit" && !selectedChapter) {
           toast("请先选择要修改的章节");
           return;
         }
+        $("#chapterEditorTitle").textContent =
+          mode === "edit" ? "修改章节名称" : "插入章节";
+        $("#chapterEditorHint").textContent =
+          mode === "edit"
+            ? "只修改章节名称，不改变章节顺序。"
+            : "填已有编号会把该章节和后面的章节自动后移。";
         $("#chapterEditor").dataset.mode = mode;
         $("#chapterEditor").dataset.originalNumber =
           selectedChapter?.number || "";
-        $("#chapterNumber").value = selectedChapter?.number || "";
+        $("#chapterNumber").value = selectedChapter?.number || insertNumber;
         $("#chapterNumber").disabled = mode === "edit";
         $("#chapterTitle").value = selectedChapter?.title || "";
         $("#chapterEditor").classList.remove("hidden");
-        $(mode === "edit" ? "#chapterTitle" : "#chapterNumber").focus();
+        $("#chapterTitle").focus();
       }
       function saveChapterEditor() {
         const b = book(),
@@ -3561,8 +3653,12 @@
           return;
         }
         if (mode === "add") {
-          if (b.chapters.some((chapter) => chapter.number === number)) {
-            toast(`第 ${number} 章已经存在`);
+          try {
+            if (b.chapters.some((chapter) => chapter.number === number)) {
+              shiftChaptersForInsert(b, number);
+            }
+          } catch (error) {
+            toast(error.message || "章节插入失败");
             return;
           }
           b.chapters.push({
@@ -3590,11 +3686,12 @@
         }
         b.chapters.sort((a, c) => a.number - c.number);
         b.currentChapter = number;
+        syncQuestionChapterLabels(b);
         saveShelf();
         renderChapterOptions(b);
         closeChapterEditor();
         render();
-        toast(mode === "add" ? "章节已新增" : "章节名称已更新");
+        toast(mode === "add" ? "章节已插入" : "章节名称已更新");
       }
       async function fetchChapterCatalog(refresh = false) {
         const b = book();
