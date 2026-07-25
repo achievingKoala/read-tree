@@ -810,6 +810,39 @@
         font-size: 13px;
       }
 
+      .question-sort {
+        display: inline-flex;
+        gap: 4px;
+        margin: 0 0 18px;
+        padding: 4px;
+        border-radius: 12px;
+        background: #f0f1f6;
+      }
+
+      .question-sort button {
+        min-width: 74px;
+        padding: 7px 10px;
+        border: 1px solid transparent;
+        border-radius: 9px;
+        color: #4d5060;
+        background: transparent;
+        font-size: 11px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .question-sort button:hover {
+        color: var(--primary-dark);
+        background: #fff;
+      }
+
+      .question-sort button.active {
+        color: #fff;
+        border-color: var(--primary);
+        background: var(--primary);
+        box-shadow: 0 5px 12px rgba(96, 87, 231, 0.18);
+      }
+
       .questions {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -972,7 +1005,8 @@
 
       .workspace.chatting .question-view > .intro-badge,
       .workspace.chatting .question-view > h3,
-      .workspace.chatting .question-view > p {
+      .workspace.chatting .question-view > p,
+      .workspace.chatting .question-view > .question-sort {
         display: none;
       }
 
@@ -2026,6 +2060,14 @@
               <p>
                 选择一个触动你的问题。这里没有标准答案，只有值得展开的想法。
               </p>
+              <div class="question-sort" id="questionSort">
+                <button type="button" data-question-sort="batch">
+                  按批次
+                </button>
+                <button type="button" data-question-sort="chapter">
+                  按章节
+                </button>
+              </div>
               <div class="questions" id="questions"></div>
             </div>
             <div class="empty-state hidden" id="emptyState">
@@ -2278,6 +2320,7 @@
         ACTIVITY_STORAGE = "readpage_activity_v1",
         CHATS_STORAGE = "readpage_chats_v1",
         NOTEBOOK_STORAGE = "readpage_notebook_v1",
+        QUESTION_SORT_STORAGE = "readpage_question_sort_v1",
         followUps = [
           "这和现实生活有什么关系？",
           "能换一个角度解释吗？",
@@ -2288,6 +2331,7 @@
         activeBookId: null,
         activeQuestions: {},
         bookViews: {},
+        questionSorts: {},
         chats: {},
         notes: [],
         busy: false,
@@ -2428,6 +2472,42 @@
       }
       function saveShelf() {
         localStorage.setItem(STORAGE, JSON.stringify(state.books));
+      }
+      function loadQuestionSorts() {
+        let raw = {};
+        try {
+          raw = JSON.parse(localStorage.getItem(QUESTION_SORT_STORAGE) || "{}");
+        } catch (e) {
+          raw = {};
+        }
+        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+          raw = {};
+        }
+        const bookIds = new Set(state.books.map((item) => item.id));
+        state.questionSorts = Object.fromEntries(
+          Object.entries(raw).filter(
+            ([bookId, mode]) =>
+              bookIds.has(bookId) && ["batch", "chapter"].includes(mode),
+          ),
+        );
+      }
+      function saveQuestionSorts() {
+        localStorage.setItem(
+          QUESTION_SORT_STORAGE,
+          JSON.stringify(state.questionSorts),
+        );
+      }
+      function questionSortMode(bookId) {
+        return state.questionSorts[bookId] || "batch";
+      }
+      function setQuestionSortMode(bookId, mode) {
+        if (!bookId || !["batch", "chapter"].includes(mode)) {
+          return;
+        }
+        state.questionSorts[bookId] = mode;
+        saveQuestionSorts();
+        renderQuestions();
+        renderView();
       }
       function loadChats() {
         let raw = {};
@@ -2857,21 +2937,47 @@
           )
           .join("");
       }
+      function chapterSortValue(question) {
+        const chapter = Number(question.chapter);
+        if (Number.isInteger(chapter) && chapter >= 0) {
+          return chapter;
+        }
+        const label = question.chapterLabel || "";
+        if (["前言", "序言"].includes(label.trim())) {
+          return 0;
+        }
+        const match = label.match(/第\s*(\d{1,4})\s*章/);
+        return match ? Number(match[1]) : 1_000_000;
+      }
       function renderQuestions() {
         const b = book(),
-          groups = [];
+          groups = [],
+          sortMode = questionSortMode(b.id);
+        $("#questionSort").classList.toggle("hidden", !b.questions.length);
+        document.querySelectorAll("[data-question-sort]").forEach((button) => {
+          const active = button.dataset.questionSort === sortMode;
+          button.classList.toggle("active", active);
+          button.setAttribute("aria-pressed", String(active));
+          button.disabled = false;
+        });
         b.questions.forEach((q) => {
           const batchLabel = q.batchLabel || "第 1 批 · 之前内容",
             displayBatchLabel = batchLabel.replace(/\s*·\s*自动生成/g, ""),
             chapterLabel = q.chapterLabel || "全书讨论",
-            label = `${chapterLabel} · ${displayBatchLabel}`,
-            key = `${chapterLabel}::${batchLabel}`;
+            isChapterSort = sortMode === "chapter",
+            label = isChapterSort
+              ? chapterLabel
+              : `${chapterLabel} · ${displayBatchLabel}`,
+            key = isChapterSort
+              ? `chapter::${chapterLabel}`
+              : `${chapterLabel}::${batchLabel}`;
           let group = groups.find((g) => g.key === key);
           if (!group) {
             group = {
               key,
               label,
               batchLabel,
+              chapterOrder: chapterSortValue(q),
               createdAt: q.batchCreatedAt || "",
               items: [],
             };
@@ -2882,14 +2988,35 @@
           }
           group.items.push(q);
         });
-        groups.sort((a, c) => {
-          const batchA = parseBatchNumber(a.batchLabel),
-            batchC = parseBatchNumber(c.batchLabel);
-          if (batchA !== batchC) {
-            return batchC - batchA;
-          }
-          return String(c.createdAt).localeCompare(String(a.createdAt));
-        });
+        if (sortMode === "chapter") {
+          groups.sort((a, c) => {
+            if (a.chapterOrder !== c.chapterOrder) {
+              return a.chapterOrder - c.chapterOrder;
+            }
+            return a.label.localeCompare(c.label, "zh-Hans-CN");
+          });
+          groups.forEach((group) => {
+            group.items.sort((a, c) => {
+              const batchA = parseBatchNumber(a.batchLabel),
+                batchC = parseBatchNumber(c.batchLabel);
+              if (batchA !== batchC) {
+                return batchA - batchC;
+              }
+              return String(a.batchCreatedAt || "").localeCompare(
+                String(c.batchCreatedAt || ""),
+              );
+            });
+          });
+        } else {
+          groups.sort((a, c) => {
+            const batchA = parseBatchNumber(a.batchLabel),
+              batchC = parseBatchNumber(c.batchLabel);
+            if (batchA !== batchC) {
+              return batchC - batchA;
+            }
+            return String(c.createdAt).localeCompare(String(a.createdAt));
+          });
+        }
         $("#badge").textContent = `✦ 已为你准备 ${b.questions.length} 个问题`;
         let index = 0;
         $("#questions").innerHTML = groups
@@ -2903,7 +3030,17 @@
                 .map((q) => {
                   index++;
                   const saved = state.chats[chatKey(q.id)]?.messages.length > 1,
-                    meta = [q.chapterLabel, q.tag].filter(Boolean).join(" · ");
+                    displayBatchLabel = (q.batchLabel || "")
+                      .replace(/\s*·\s*自动生成/g, "")
+                      .trim(),
+                    meta = [
+                      sortMode === "chapter"
+                        ? displayBatchLabel
+                        : q.chapterLabel,
+                      q.tag,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ");
                   return `<div class="question-card-wrap"><button class="question-card ${
                     state.activeQuestions[b.id] === q.id ? "active" : ""
                   }" data-question="${
@@ -3044,9 +3181,11 @@
         });
         delete state.activeQuestions[b.id];
         delete state.bookViews[b.id];
+        delete state.questionSorts[b.id];
         state.activeBookId = state.books[0]?.id || null;
         saveShelf();
         saveChats();
+        saveQuestionSorts();
         render();
         toast("图书已删除");
       }
@@ -3885,6 +4024,13 @@
         const q = e.target.closest("[data-question]");
         if (q) openQuestion(q.dataset.question);
       });
+      $("#questionSort").addEventListener("click", (e) => {
+        const button = e.target.closest("[data-question-sort]");
+        if (!button) {
+          return;
+        }
+        setQuestionSortMode(state.activeBookId, button.dataset.questionSort);
+      });
       $("#messages").addEventListener("click", (e) => {
         const button = e.target.closest("[data-collect-message]");
         if (button && !button.disabled) {
@@ -4037,6 +4183,7 @@
         );
       });
       loadShelf();
+      loadQuestionSorts();
       loadActivity();
       loadChats();
       loadNotebook();
