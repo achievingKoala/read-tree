@@ -210,6 +210,17 @@ function parseQuestions(content, expectedCount = QUESTIONS_PER_BATCH) {
   }));
 }
 
+function isPrefaceTitle(title) {
+  return ["前言", "序言"].includes(String(title || "").trim());
+}
+
+function describeChapter(chapter, chapterTitle = "") {
+  if (chapter === 0) {
+    return chapterTitle || "前言/序言";
+  }
+  return `第 ${chapter} 章${chapterTitle ? `《${chapterTitle}》` : ""}`;
+}
+
 function parseChapters(content) {
   const cleaned = cleanJsonContent(content);
   let parsed;
@@ -247,15 +258,29 @@ function parseChapters(content) {
     );
   }
 
+  let nextBodyNumber = 1;
+  let hasPreface = false;
+  const normalizedChapters = chapters.map((chapter) => {
+    const title = requiredString(chapter?.title, "章节名", 120),
+      isPreface = isPrefaceTitle(title);
+    if (isPreface) {
+      if (hasPreface) {
+        throw new Error("AI chapter response has duplicate preface chapters");
+      }
+      hasPreface = true;
+    }
+    return {
+      number: isPreface ? 0 : nextBodyNumber++,
+      title,
+      summary: requiredString(chapter?.summary, "章节简介", 500),
+      source: "ai",
+    };
+  });
+
   return {
     confidence,
     warning,
-    chapters: chapters.map((chapter, index) => ({
-      number: index + 1,
-      title: requiredString(chapter?.title, "章节名", 120),
-      summary: requiredString(chapter?.summary, "章节简介", 500),
-      source: "ai",
-    })),
+    chapters: normalizedChapters,
   };
 }
 
@@ -313,7 +338,7 @@ async function handleChapters(request, response) {
 要求：
 1. 只依据模型已有知识整理章节，不得联网搜索，也不得声称已经查询了外部来源。
 2. 如果无法可靠确认目录，必须将 confidence 设为 low，并在 warning 中提醒用户核对具体版本。
-3. 列出从第一章开始的正式正文目录，保持原有顺序，不加入推荐序、附录或致谢。
+3. 可以在正式正文目录前加入一个“前言”或“序言”；正文从第一章开始，保持原有顺序，不加入推荐序、附录或致谢。
 4. title 不包含章节序号。
 5. summary 用 1–2 句话概括本章主题，最多 160 个汉字；不得编造无法确认的人物、情节、观点或引文。
 6. 只有多个可靠来源相互印证，且高度确信书籍及常见版本目录时 confidence 才能为 high，否则必须为 low。
@@ -347,7 +372,7 @@ async function handleInitialBatch(request, response) {
 目录要求：
 1. 只依据模型已有知识整理章节，不得联网搜索，也不得声称已经查询了外部来源。
 2. 如果无法可靠确认目录，必须将 confidence 设为 low，并在 warning 中提醒用户核对具体版本。
-3. 列出从第一章开始的正式正文目录，保持原有顺序，不加入推荐序、附录或致谢。
+3. 可以在正式正文目录前加入一个“前言”或“序言”；正文从第一章开始，保持原有顺序，不加入推荐序、附录或致谢。
 4. title 不包含章节序号。
 5. summary 用 1–2 句话概括本章主题，最多 160 个汉字；不得编造无法确认的人物、情节、观点或引文。
 6. 只有高度确信书籍及常见版本目录时 confidence 才能为 high，否则必须为 low。
@@ -383,7 +408,7 @@ async function handleQuestions(request, response) {
   const context = optionalString(body.context, "章节内容", 20_000);
   const contextSource = body.contextSource || "none";
   const questionCount = QUESTIONS_PER_BATCH;
-  if (!Number.isInteger(chapter) || chapter < 1 || chapter > 9999) {
+  if (!Number.isInteger(chapter) || chapter < 0 || chapter > 9999) {
     throw new ClientError("章节号无效");
   }
   if (!["ai-summary", "user", "none"].includes(contextSource)) {
@@ -426,9 +451,7 @@ async function handleQuestions(request, response) {
       role: "user",
       content: `图书：《${title}》\n作者：${
         author || "未知"
-      }\n章节：第 ${chapter} 章${
-        chapterTitle ? `《${chapterTitle}》` : ""
-      }\n${grounding}`,
+      }\n章节：${describeChapter(chapter, chapterTitle)}\n${grounding}`,
     },
   ]);
 
@@ -452,8 +475,8 @@ async function handleChat(request, response) {
     throw new ClientError("对话记录过长，请新建对话");
   }
   const chapterContext =
-    Number.isInteger(chapter) && chapter > 0
-      ? chapterLabel || `第 ${chapter} 章`
+    Number.isInteger(chapter) && chapter >= 0
+      ? chapterLabel || describeChapter(chapter)
       : chapterLabel || "章节未知";
 
   const messages = body.messages.map((message) => {
