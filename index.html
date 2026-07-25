@@ -2171,10 +2171,10 @@
               class="book-chapters-input"
               id="editBookChapters"
               maxlength="12000"
-              placeholder="每行一个章节，例如：&#10;1 小王子离开自己的星球&#10;2 玫瑰与误解"
+              placeholder="每行一个章节，例如：&#10;前言&#10;1 小王子离开自己的星球&#10;2 玫瑰与误解"
             ></textarea>
             <p class="book-edit-note">
-              每行一个章节。可以写“1 章节名”，也可以只写章节名，系统会按行号自动编号。
+              每行一个章节。可以写“前言”“序言”“1 章节名”，也可以只写章节名，系统会按行号自动编号。
             </p>
           </div>
           <button class="primary-btn">保存图书</button>
@@ -2221,7 +2221,7 @@
               插入章节
             </p>
             <p class="chapter-editor-hint" id="chapterEditorHint">
-              填已有编号会把该章节和后面的章节自动后移。
+              编号 0 可作为前言/序言；填已有正文章节编号会把该章节和后面的章节自动后移。
             </p>
           </div>
           <div class="chapter-editor-field">
@@ -2229,10 +2229,10 @@
             <input
               id="chapterNumber"
               type="number"
-              min="1"
+              min="0"
               max="9999"
               step="1"
-              placeholder="例如：3"
+              placeholder="例如：0 或 3"
             />
           </div>
           <div class="chapter-editor-field">
@@ -2308,13 +2308,42 @@
                 .slice(2)}`;
         return `${prefix}-${random}`;
       }
+      function isChapterNumber(value) {
+        if (value === undefined || value === null || value === "") {
+          return false;
+        }
+        const number = Number(value);
+        return Number.isInteger(number) && number >= 0 && number <= 9999;
+      }
+      function readChapterNumber(value) {
+        if (!isChapterNumber(value)) {
+          return null;
+        }
+        const number = Number(value);
+        return number;
+      }
+      function isPrefaceTitle(title) {
+        return ["前言", "序言"].includes(String(title || "").trim());
+      }
+      function isPrefaceChapter(chapter) {
+        return chapter?.number === 0;
+      }
+      function formatChapterLabel(chapter) {
+        if (!chapter) {
+          return "";
+        }
+        if (isPrefaceChapter(chapter)) {
+          return chapter.title;
+        }
+        return `第 ${chapter.number} 章 · ${chapter.title}`;
+      }
       function normalizeChapters(chapters) {
         if (!Array.isArray(chapters)) return [];
         return chapters
           .filter(
             (chapter) =>
               chapter &&
-              Number.isInteger(Number(chapter.number)) &&
+              isChapterNumber(chapter.number) &&
               typeof chapter.title === "string" &&
               chapter.title.trim(),
           )
@@ -2362,7 +2391,7 @@
                 base.author = typeof x.author === "string" ? x.author : "";
               }
               base.deletedQuestionIds = deletedQuestionIds;
-              base.currentChapter = x.currentChapter || null;
+              base.currentChapter = readChapterNumber(x.currentChapter);
               base.chapters = normalizeChapters(x.chapters);
               base.chapterConfidence = ["high", "low"].includes(
                 x.chapterConfidence,
@@ -2378,7 +2407,7 @@
             }
             return {
               ...x,
-              currentChapter: x.currentChapter || null,
+              currentChapter: readChapterNumber(x.currentChapter),
               chapters: normalizeChapters(x.chapters),
               chapterConfidence: ["high", "low"].includes(x.chapterConfidence)
                 ? x.chapterConfidence
@@ -2900,7 +2929,11 @@
       }
       function formatBookChapterLines(chapters) {
         return chapters
-          .map((chapter) => `${chapter.number} ${chapter.title}`)
+          .map((chapter) =>
+            isPrefaceChapter(chapter)
+              ? chapter.title
+              : `${chapter.number} ${chapter.title}`,
+          )
           .join("\n");
       }
       function parseBookChapterLines(value, existingChapters) {
@@ -2918,15 +2951,23 @@
           if (match && match[2].trim()) {
             number = Number(match[1]);
             title = match[2].trim();
+          } else if (isPrefaceTitle(line)) {
+            number = 0;
+            title = line;
           }
-          if (!Number.isInteger(number) || number < 1 || number > 9999) {
-            throw new Error("章节编号必须是 1–9999 的整数");
+          if (!isChapterNumber(number)) {
+            throw new Error("章节编号必须是 0–9999 的整数");
           }
           if (usedNumbers.has(number)) {
-            throw new Error(`第 ${number} 章重复了`);
+            throw new Error(
+              number === 0 ? "前言/序言重复了" : `第 ${number} 章重复了`,
+            );
           }
           if (!title) {
             throw new Error("章节名称不能为空");
+          }
+          if (number === 0 && !isPrefaceTitle(title)) {
+            throw new Error("编号 0 只能用于前言或序言");
           }
           if (title.length > 120) {
             throw new Error("章节名称不能超过 120 个字");
@@ -2950,7 +2991,7 @@
             (item) => item.number === question.chapter,
           );
           if (chapter) {
-            question.chapterLabel = `第 ${chapter.number} 章 · ${chapter.title}`;
+            question.chapterLabel = formatChapterLabel(chapter);
           }
         });
       }
@@ -2981,7 +3022,7 @@
         b.chapterConfidence = "";
         b.chapterWarning = "";
         if (!b.chapters.some((chapter) => chapter.number === b.currentChapter)) {
-          b.currentChapter = b.chapters[0]?.number || null;
+          b.currentChapter = readChapterNumber(b.chapters[0]?.number);
         }
         syncQuestionChapterLabels(b);
         saveShelf();
@@ -3346,9 +3387,7 @@
         $("#bookChapterPreviewList").innerHTML = pendingBookChapters.chapters
           .map(
             (chapter) =>
-              `<li><span>第 ${chapter.number} 章</span> · ${escapeHtml(
-                chapter.title,
-              )}</li>`,
+              `<li><span>${escapeHtml(formatChapterLabel(chapter))}</span></li>`,
           )
           .join("");
         $("#bookChapterPreview").classList.remove("hidden");
@@ -3372,7 +3411,7 @@
           b.chapters = clone(chapterData.chapters);
           b.chapterConfidence = chapterData.chapterConfidence;
           b.chapterWarning = chapterData.chapterWarning;
-          b.currentChapter = b.chapters[0]?.number || null;
+          b.currentChapter = readChapterNumber(b.chapters[0]?.number);
         }
         state.books.push(b);
         state.activeBookId = b.id;
@@ -3433,7 +3472,7 @@
           questions = questionsData.map((question, index) => ({
             id: `chapter-${chapterInfo.number}-${batchId}-${index + 1}`,
             chapter: chapterInfo.number,
-            chapterLabel: `第 ${chapterInfo.number} 章 · ${chapterInfo.title}`,
+            chapterLabel: formatChapterLabel(chapterInfo),
             batchId,
             batchLabel,
             batchCreatedAt,
@@ -3468,7 +3507,7 @@
         });
         applyChapterPayload(b, data);
         if (!b.chapters.some((chapter) => chapter.number === b.currentChapter)) {
-          b.currentChapter = b.chapters[0]?.number || null;
+          b.currentChapter = readChapterNumber(b.chapters[0]?.number);
         }
         if (shouldSave) {
           saveShelf();
@@ -3545,7 +3584,7 @@
             (chapter) =>
               `<option value="${chapter.number}" ${
                 b.currentChapter === chapter.number ? "selected" : ""
-              }>第 ${chapter.number} 章 · ${escapeHtml(chapter.title)}</option>`,
+              }>${escapeHtml(formatChapterLabel(chapter))}</option>`,
           )
           .join("");
         $("#chapterSelect").disabled = !b.chapters.length;
@@ -3568,7 +3607,8 @@
       }
       function fillChapterContext(b) {
         const chapter = b.chapters.find(
-            (item) => item.number === Number($("#chapterSelect").value),
+            (item) =>
+              item.number === readChapterNumber($("#chapterSelect").value),
           ),
           summary = chapter?.summary || "";
         $("#chapterContext").value = summary;
@@ -3585,13 +3625,18 @@
         $("#chapterEditor").dataset.originalNumber = "";
       }
       function nextChapterNumber(chapters) {
-        const numbers = chapters.map((chapter) => chapter.number);
+        const numbers = chapters
+          .map((chapter) => chapter.number)
+          .filter((number) => number > 0);
         if (!numbers.length) {
           return 1;
         }
         return Math.max(...numbers) + 1;
       }
       function shiftChaptersForInsert(b, number) {
+        if (number === 0) {
+          return;
+        }
         if (nextChapterNumber(b.chapters) > 9999) {
           throw new Error("章节编号已到 9999，无法继续插入");
         }
@@ -3609,13 +3654,16 @@
       }
       function openChapterEditor(mode) {
         const b = book(),
-          selectedNumber = Number($("#chapterSelect").value),
+          selectedNumber = readChapterNumber($("#chapterSelect").value),
           selectedChapter =
             mode === "edit"
               ? b.chapters.find((chapter) => chapter.number === selectedNumber)
               : null;
-        const insertNumber =
-          selectedNumber || Math.min(nextChapterNumber(b.chapters), 9999);
+        const nextNumber = Math.min(nextChapterNumber(b.chapters), 9999),
+          insertNumber =
+            mode === "add" && selectedNumber === 0
+              ? nextNumber
+              : selectedNumber ?? nextNumber;
         if (mode === "edit" && !selectedChapter) {
           toast("请先选择要修改的章节");
           return;
@@ -3625,11 +3673,11 @@
         $("#chapterEditorHint").textContent =
           mode === "edit"
             ? "只修改章节名称，不改变章节顺序。"
-            : "填已有编号会把该章节和后面的章节自动后移。";
+            : "编号 0 可作为前言/序言；填已有正文章节编号会把该章节和后面的章节自动后移。";
         $("#chapterEditor").dataset.mode = mode;
         $("#chapterEditor").dataset.originalNumber =
-          selectedChapter?.number || "";
-        $("#chapterNumber").value = selectedChapter?.number || insertNumber;
+          selectedChapter?.number ?? "";
+        $("#chapterNumber").value = selectedChapter?.number ?? insertNumber;
         $("#chapterNumber").disabled = mode === "edit";
         $("#chapterTitle").value = selectedChapter?.title || "";
         $("#chapterEditor").classList.remove("hidden");
@@ -3640,12 +3688,16 @@
           mode = $("#chapterEditor").dataset.mode,
           number = Number($("#chapterNumber").value),
           title = $("#chapterTitle").value.trim();
-        if (!Number.isInteger(number) || number < 1 || number > 9999) {
-          toast("章节编号必须是 1–9999 的整数");
+        if (!isChapterNumber(number)) {
+          toast("章节编号必须是 0–9999 的整数");
           return;
         }
         if (!title) {
           toast("请填写章节名称");
+          return;
+        }
+        if (number === 0 && !isPrefaceTitle(title)) {
+          toast("编号 0 只能用于前言或序言");
           return;
         }
         if (title.length > 120) {
@@ -3655,6 +3707,10 @@
         if (mode === "add") {
           try {
             if (b.chapters.some((chapter) => chapter.number === number)) {
+              if (number === 0) {
+                toast("前言/序言已经存在");
+                return;
+              }
               shiftChaptersForInsert(b, number);
             }
           } catch (error) {
@@ -3678,7 +3734,7 @@
           chapter.source = "manual";
           b.questions.forEach((question) => {
             if (question.chapter === number) {
-              question.chapterLabel = `第 ${number} 章 · ${title}`;
+              question.chapterLabel = formatChapterLabel(chapter);
             }
           });
         } else {
@@ -3725,7 +3781,7 @@
           if (
             !b.chapters.some((chapter) => chapter.number === b.currentChapter)
           ) {
-            b.currentChapter = b.chapters[0]?.number || null;
+            b.currentChapter = readChapterNumber(b.chapters[0]?.number);
           }
           saveShelf();
           renderChapterOptions(b);
@@ -3790,7 +3846,7 @@
           $("#chapterModal").close();
           state.bookViews[b.id] = false;
           render();
-          toast(`已为第 ${chapter} 章追加 3 个问题`);
+          toast(`已为${formatChapterLabel(chapterInfo)}追加 3 个问题`);
         } catch (error) {
           toast(error.message || "问题生成失败，请稍后重试");
         } finally {
@@ -3914,7 +3970,7 @@
       });
       $("#chapterSelect").addEventListener("change", () => {
         const b = book();
-        b.currentChapter = Number($("#chapterSelect").value) || null;
+        b.currentChapter = readChapterNumber($("#chapterSelect").value);
         saveShelf();
         fillChapterContext(b);
       });
