@@ -2491,8 +2491,8 @@
                 base.author = typeof x.author === "string" ? x.author : "";
               }
               base.deletedQuestionIds = deletedQuestionIds;
-              base.lastStudiedAt =
-                typeof x.lastStudiedAt === "string" ? x.lastStudiedAt : "";
+              base.updatedAt =
+                typeof x.updatedAt === "string" ? x.updatedAt : "";
               base.currentChapter = readChapterNumber(x.currentChapter);
               base.chapters = normalizeChapters(x.chapters);
               base.chapterConfidence = ["high", "low"].includes(
@@ -2522,39 +2522,43 @@
               deletedQuestionIds: Array.isArray(x.deletedQuestionIds)
                 ? x.deletedQuestionIds
                 : [],
-              lastStudiedAt:
-                typeof x.lastStudiedAt === "string" ? x.lastStudiedAt : "",
+              updatedAt: typeof x.updatedAt === "string" ? x.updatedAt : "",
               questions: Array.isArray(x.questions) ? x.questions : [],
             };
           })
           .filter((x) => x && x.id);
-        state.activeBookId = sortedBooksByStudy()[0]?.id || null;
+        state.activeBookId = state.books[0]?.id || null;
       }
       function saveShelf() {
         localStorage.setItem(STORAGE, JSON.stringify(state.books));
       }
-      function studyTimeValue(bookItem) {
-        const time = Date.parse(bookItem?.lastStudiedAt || "");
+      function activityTimeValue(item) {
+        const time = Date.parse(item?.updatedAt || "");
         return Number.isFinite(time) ? time : 0;
+      }
+      function bookStudyTimeValue(bookItem) {
+        let latestTime = activityTimeValue(bookItem),
+          hasHistory = false;
+        Object.entries(state.chats).forEach(([key, session]) => {
+          if (
+            key.startsWith(bookItem.id + "::") &&
+            session?.messages?.length > 1
+          ) {
+            hasHistory = true;
+            latestTime = Math.max(latestTime, activityTimeValue(session));
+          }
+        });
+        return latestTime || (hasHistory ? 1 : 0);
       }
       function sortedBooksByStudy() {
         return state.books
           .map((bookItem, index) => ({ bookItem, index }))
           .sort((a, b) => {
             const studyDiff =
-              studyTimeValue(b.bookItem) - studyTimeValue(a.bookItem);
+              bookStudyTimeValue(b.bookItem) - bookStudyTimeValue(a.bookItem);
             return studyDiff || a.index - b.index;
           })
           .map(({ bookItem }) => bookItem);
-      }
-      function markBookStudied(bookId) {
-        const target = state.books.find((item) => item.id === bookId);
-        if (!target) {
-          return false;
-        }
-        target.lastStudiedAt = new Date().toISOString();
-        saveShelf();
-        return true;
       }
       function loadQuestionSorts() {
         let raw = {};
@@ -2633,6 +2637,8 @@
                 : !messages.some((message) => message.role === "user"),
             replyIndex: Math.max(0, Number(session.replyIndex) || 0),
             completed: session.completed === true,
+            updatedAt:
+              typeof session.updatedAt === "string" ? session.updatedAt : "",
           };
         });
         if (migrated) saveChats();
@@ -2771,7 +2777,6 @@
           return false;
         }
         activity.days[today].completedQuestions.push(completedKey);
-        markBookStudied(bookId);
         saveActivity();
         renderRecords();
         return true;
@@ -3350,7 +3355,6 @@
           q = b.questions.find((x) => x.id === qid);
         state.activeQuestions[b.id] = qid;
         state.bookViews[b.id] = true;
-        markBookStudied(b.id);
         const key = chatKey(qid);
         if (!state.chats[key]) {
           state.chats[key] = {
@@ -3364,6 +3368,7 @@
             first: true,
             replyIndex: 0,
             completed: false,
+            updatedAt: "",
           };
           saveChats();
         } else if (
@@ -3536,7 +3541,9 @@
           });
           session.first = false;
           session.completed = session.completed || data.completed === true;
-          markBookStudied(b.id);
+          session.updatedAt = new Date().toISOString();
+          b.updatedAt = session.updatedAt;
+          saveShelf();
           saveChats();
           recordSubmission();
           if (data.completed === true) {
@@ -3571,7 +3578,6 @@
       }
       function switchBook(id) {
         state.activeBookId = id;
-        markBookStudied(id);
         render();
       }
       function parseBatchNumber(label) {
@@ -3608,7 +3614,7 @@
           chapterWarning: "",
           generatedChapters: [],
           source: "custom",
-          lastStudiedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
           questions: [],
         };
         return b;
@@ -3695,7 +3701,6 @@
         }
         state.books.push(b);
         state.activeBookId = b.id;
-        markBookStudied(b.id);
         saveShelf();
         return b;
       }
@@ -3763,6 +3768,7 @@
           }));
         b.questions.push(...questions);
         b.currentChapter = chapterInfo.number;
+        b.updatedAt = batchCreatedAt;
       }
       function applyChapterPayload(b, data) {
         if (!Array.isArray(data.chapters) || !data.chapters.length) {
@@ -4328,6 +4334,7 @@
       loadQuestionSorts();
       loadActivity();
       loadChats();
+      state.activeBookId = sortedBooksByStudy()[0]?.id || null;
       loadNotebook();
       renderRecords();
       render();
