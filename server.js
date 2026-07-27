@@ -210,6 +210,26 @@ function parseQuestions(content, expectedCount = QUESTIONS_PER_BATCH) {
   }));
 }
 
+function parseChatReply(content) {
+  const cleaned = cleanJsonContent(content);
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (_error) {
+    console.error("AI chat response is not JSON:", cleaned.slice(0, 2_000));
+    throw new Error("AI chat response is not valid JSON");
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("AI chat response must be an object");
+  }
+
+  return {
+    answer: requiredString(parsed.answer, "回答", 2_000),
+    completed: parsed.completed === true,
+  };
+}
+
 function isPrefaceTitle(title) {
   return ["前言", "序言"].includes(String(title || "").trim());
 }
@@ -423,7 +443,7 @@ async function handleChat(request, response) {
     };
   });
 
-  const answer = await callOpenRouter([
+  const content = await callOpenRouter([
     {
       role: "system",
       content: `你是耐心、简洁的中文阅读教练。
@@ -445,12 +465,15 @@ async function handleChat(request, response) {
 6. 不要虚构无法确认的书中细节，也不要主动开启当前问题之外的新话题。
 
 输出要求：
-直接返回纯文本，不要使用 Markdown。`,
+请输出严格 JSON，不要 Markdown。
+格式为 {"answer":"给用户看的回答","completed":true|false}。
+answer 直接写给用户看，输出纯文本，不要 Markdown， 不要提到 JSON 或字段名。
+completed 表示用户是否已经把当前问题回答完整；如果你还需要继续追问或引导重读，就必须为 false。`,
     },
     ...messages,
   ]);
 
-  sendJson(response, 200, { answer });
+  sendJson(response, 200, parseChatReply(content));
 }
 
 function serveIndex(response) {

@@ -349,6 +349,24 @@
         margin-top: 7px;
       }
 
+      .sidebar-completed-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-top: 8px;
+        padding-top: 7px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .sidebar-completed-row strong {
+        color: var(--primary-dark);
+        font-size: 13px;
+      }
+
       .goal-form {
         display: flex;
         align-items: end;
@@ -957,6 +975,11 @@
         font-size: 9px;
       }
 
+      .saved-mark.completed {
+        color: #21855f;
+        font-weight: 800;
+      }
+
       .empty-state {
         display: grid;
         place-items: center;
@@ -1069,11 +1092,36 @@
         background: #fafafd;
       }
 
+      .chat-topic-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+
       .chat-topic span {
         color: var(--primary);
         font-size: 10px;
         font-weight: 800;
         letter-spacing: 0.08em;
+      }
+
+      .chat-status {
+        display: inline-flex;
+        align-items: center;
+        min-height: 22px;
+        padding: 4px 8px;
+        border-radius: 999px;
+        color: #72758a;
+        background: #eceef5;
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .chat-status.completed {
+        color: #21855f;
+        background: #e6f6ee;
       }
 
       .chat-topic p {
@@ -2010,6 +2058,9 @@
               <span>今日目标</span><strong id="todayCount">0 / 5</strong>
             </div>
             <div class="record-progress"><i id="todayProgress"></i></div>
+            <div class="sidebar-completed-row">
+              <span>完成问答</span><strong id="todayCompletedCount">0</strong>
+            </div>
           </div>
           <div class="library-main">
             <div class="current-cover" id="cover">
@@ -2084,7 +2135,12 @@
             </div>
             <div class="chat-view" id="chatView">
               <div class="chat-topic hidden">
-                <span>正在讨论</span>
+                <div class="chat-topic-head">
+                  <span>正在讨论</span>
+                  <strong class="chat-status" id="chatCompletionStatus">
+                    进行中
+                  </strong>
+                </div>
                 <p id="activeQuestion"></p>
               </div>
               <div class="messages" id="messages"></div>
@@ -2435,6 +2491,8 @@
                 base.author = typeof x.author === "string" ? x.author : "";
               }
               base.deletedQuestionIds = deletedQuestionIds;
+              base.lastStudiedAt =
+                typeof x.lastStudiedAt === "string" ? x.lastStudiedAt : "";
               base.currentChapter = readChapterNumber(x.currentChapter);
               base.chapters = normalizeChapters(x.chapters);
               base.chapterConfidence = ["high", "low"].includes(
@@ -2464,14 +2522,39 @@
               deletedQuestionIds: Array.isArray(x.deletedQuestionIds)
                 ? x.deletedQuestionIds
                 : [],
+              lastStudiedAt:
+                typeof x.lastStudiedAt === "string" ? x.lastStudiedAt : "",
               questions: Array.isArray(x.questions) ? x.questions : [],
             };
           })
           .filter((x) => x && x.id);
-        state.activeBookId = state.books[0]?.id || null;
+        state.activeBookId = sortedBooksByStudy()[0]?.id || null;
       }
       function saveShelf() {
         localStorage.setItem(STORAGE, JSON.stringify(state.books));
+      }
+      function studyTimeValue(bookItem) {
+        const time = Date.parse(bookItem?.lastStudiedAt || "");
+        return Number.isFinite(time) ? time : 0;
+      }
+      function sortedBooksByStudy() {
+        return state.books
+          .map((bookItem, index) => ({ bookItem, index }))
+          .sort((a, b) => {
+            const studyDiff =
+              studyTimeValue(b.bookItem) - studyTimeValue(a.bookItem);
+            return studyDiff || a.index - b.index;
+          })
+          .map(({ bookItem }) => bookItem);
+      }
+      function markBookStudied(bookId) {
+        const target = state.books.find((item) => item.id === bookId);
+        if (!target) {
+          return false;
+        }
+        target.lastStudiedAt = new Date().toISOString();
+        saveShelf();
+        return true;
       }
       function loadQuestionSorts() {
         let raw = {};
@@ -2549,6 +2632,7 @@
                 ? session.first
                 : !messages.some((message) => message.role === "user"),
             replyIndex: Math.max(0, Number(session.replyIndex) || 0),
+            completed: session.completed === true,
           };
         });
         if (migrated) saveChats();
@@ -2648,6 +2732,11 @@
           }
           item.count = Math.max(0, Number(item.count) || 0);
           item.goal = Math.max(1, Number(item.goal) || activity.dailyGoal);
+          item.completedQuestions = Array.isArray(item.completedQuestions)
+            ? item.completedQuestions.filter(
+                (key) => typeof key === "string" && key.includes("::"),
+              )
+            : [];
         });
       }
       function saveActivity() {
@@ -2656,10 +2745,36 @@
       function recordSubmission() {
         const today = localDate();
         if (!activity.days[today])
-          activity.days[today] = { count: 0, goal: activity.dailyGoal };
+          activity.days[today] = {
+            count: 0,
+            goal: activity.dailyGoal,
+            completedQuestions: [],
+          };
         activity.days[today].count++;
         saveActivity();
         renderRecords();
+      }
+      function recordCompletedQuestion(bookId, questionId) {
+        const today = localDate(),
+          completedKey = `${bookId}::${questionId}`;
+        if (!bookId || !questionId) return false;
+        if (!activity.days[today])
+          activity.days[today] = {
+            count: 0,
+            goal: activity.dailyGoal,
+            completedQuestions: [],
+          };
+        if (!Array.isArray(activity.days[today].completedQuestions)) {
+          activity.days[today].completedQuestions = [];
+        }
+        if (activity.days[today].completedQuestions.includes(completedKey)) {
+          return false;
+        }
+        activity.days[today].completedQuestions.push(completedKey);
+        markBookStudied(bookId);
+        saveActivity();
+        renderRecords();
+        return true;
       }
       function calculateStreak() {
         const today = new Date(),
@@ -2689,7 +2804,11 @@
           todayItem = activity.days[today] || {
             count: 0,
             goal: activity.dailyGoal,
+            completedQuestions: [],
           },
+          todayCompletedCount = Array.isArray(todayItem.completedQuestions)
+            ? todayItem.completedQuestions.length
+            : 0,
           dates = Object.keys(activity.days).sort((a, b) => b.localeCompare(a)),
           shown = dates.slice(0, visibleHistory),
           total = dates.reduce(
@@ -2702,6 +2821,7 @@
           100,
           (todayItem.count / todayItem.goal) * 100,
         )}%`;
+        $("#todayCompletedCount").textContent = todayCompletedCount;
         if ($("#streakCount")) $("#streakCount").textContent = calculateStreak();
         if ($("#totalCount")) $("#totalCount").textContent = total;
         $("#historyTotal").textContent = dates.length
@@ -2711,12 +2831,15 @@
           ? shown
               .map((date) => {
                 const item = activity.days[date],
+                  completedCount = Array.isArray(item.completedQuestions)
+                    ? item.completedQuestions.length
+                    : 0,
                   done = item.count >= item.goal;
                 return `<div class="history-row"><div class="history-date"><strong>${formatRecordDate(
                   date,
                 )}</strong><small>${date}</small></div><span class="history-count">${
                   item.count
-                } / ${item.goal} 次</span><span class="history-state ${
+                } / ${item.goal} 次 · 完成 ${completedCount}</span><span class="history-state ${
                   done ? "done" : ""
                 }">${done ? "已达标" : "进行中"}</span></div>`;
               })
@@ -2914,7 +3037,7 @@
             '<div class="shelf-empty">还没有图书。点击上方 + 添加一本。</div>';
           return;
         }
-        $("#shelf").innerHTML = state.books
+        $("#shelf").innerHTML = sortedBooksByStudy()
           .map(
             (b) =>
               `<button class="shelf-item ${
@@ -3029,7 +3152,9 @@
               }</div>${group.items
                 .map((q) => {
                   index++;
-                  const saved = state.chats[chatKey(q.id)]?.messages.length > 1,
+                  const session = state.chats[chatKey(q.id)],
+                    saved = session?.messages.length > 1,
+                    completed = session?.completed === true,
                     displayBatchLabel = (q.batchLabel || "")
                       .replace(/\s*·\s*自动生成/g, "")
                       .trim(),
@@ -3053,7 +3178,11 @@
                   )}</strong><small>${escapeHtml(
                     meta,
                   )}</small><span class="question-arrow">→</span>${
-                    saved ? '<span class="saved-mark">● 有对话</span>' : ""
+                    completed
+                      ? '<span class="saved-mark completed">✓ 已完成</span>'
+                      : saved
+                        ? '<span class="saved-mark">● 有对话</span>'
+                        : ""
                   }</button><button class="question-delete" type="button" data-delete-question="${escapeHtml(
                     q.id,
                   )}" aria-label="删除问题：${escapeHtml(
@@ -3182,7 +3311,7 @@
         delete state.activeQuestions[b.id];
         delete state.bookViews[b.id];
         delete state.questionSorts[b.id];
-        state.activeBookId = state.books[0]?.id || null;
+        state.activeBookId = sortedBooksByStudy()[0]?.id || null;
         saveShelf();
         saveChats();
         saveQuestionSorts();
@@ -3221,6 +3350,7 @@
           q = b.questions.find((x) => x.id === qid);
         state.activeQuestions[b.id] = qid;
         state.bookViews[b.id] = true;
+        markBookStudied(b.id);
         const key = chatKey(qid);
         if (!state.chats[key]) {
           state.chats[key] = {
@@ -3233,6 +3363,7 @@
             ],
             first: true,
             replyIndex: 0,
+            completed: false,
           };
           saveChats();
         } else if (
@@ -3277,7 +3408,10 @@
       function restoreChat(qid) {
         const q = book().questions.find((x) => x.id === qid),
           session = state.chats[chatKey(qid)];
+        const completed = session.completed === true;
         $("#activeQuestion").textContent = q.text;
+        $("#chatCompletionStatus").textContent = completed ? "已完成" : "进行中";
+        $("#chatCompletionStatus").classList.toggle("completed", completed);
         $("#messages").innerHTML = session.messages
           .map((message) => messageHTML(message))
           .join("");
@@ -3401,8 +3535,13 @@
             text: data.answer.trim(),
           });
           session.first = false;
+          session.completed = session.completed || data.completed === true;
+          markBookStudied(b.id);
           saveChats();
           recordSubmission();
+          if (data.completed === true) {
+            recordCompletedQuestion(b.id, qid);
+          }
           thinkingElement.remove();
           if (
             state.activeBookId === b.id &&
@@ -3432,6 +3571,7 @@
       }
       function switchBook(id) {
         state.activeBookId = id;
+        markBookStudied(id);
         render();
       }
       function parseBatchNumber(label) {
@@ -3468,6 +3608,7 @@
           chapterWarning: "",
           generatedChapters: [],
           source: "custom",
+          lastStudiedAt: new Date().toISOString(),
           questions: [],
         };
         return b;
@@ -3554,6 +3695,7 @@
         }
         state.books.push(b);
         state.activeBookId = b.id;
+        markBookStudied(b.id);
         saveShelf();
         return b;
       }
