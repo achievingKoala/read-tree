@@ -3491,15 +3491,14 @@
           };
         });
       }
-      function syncQuestionChapterLabels(b) {
-        b.questions.forEach((question) => {
-          const chapter = b.chapters.find(
-            (item) => item.number === question.chapter,
-          );
-          if (chapter) {
-            question.chapterLabel = formatChapterLabel(chapter);
-          }
-        });
+      function shiftQuestionChapterLabelNumber(question, nextNumber) {
+        if (typeof question.chapterLabel !== "string") {
+          return;
+        }
+        question.chapterLabel = question.chapterLabel.replace(
+          /^第\s*\d{1,4}\s*章/,
+          `第 ${nextNumber} 章`,
+        );
       }
       function openBookEditModal() {
         const b = book();
@@ -3530,7 +3529,6 @@
         if (!b.chapters.some((chapter) => chapter.number === b.currentChapter)) {
           b.currentChapter = readChapterNumber(b.chapters[0]?.number);
         }
-        syncQuestionChapterLabels(b);
         saveShelf();
         $("#bookEditModal").close();
         render();
@@ -4228,6 +4226,7 @@
         b.questions.forEach((question) => {
           if (question.chapter >= number) {
             question.chapter += 1;
+            shiftQuestionChapterLabelNumber(question, question.chapter);
           }
         });
       }
@@ -4311,17 +4310,11 @@
           }
           chapter.title = title;
           chapter.source = "manual";
-          b.questions.forEach((question) => {
-            if (question.chapter === number) {
-              question.chapterLabel = formatChapterLabel(chapter);
-            }
-          });
         } else {
           return;
         }
         b.chapters.sort((a, c) => a.number - c.number);
         b.currentChapter = number;
-        syncQuestionChapterLabels(b);
         saveShelf();
         renderChapterOptions(b);
         closeChapterEditor();
