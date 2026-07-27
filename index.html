@@ -919,6 +919,33 @@
         background: #fff0f0;
       }
 
+      .question-repeat {
+        position: absolute;
+        z-index: 1;
+        left: 12px;
+        bottom: 10px;
+        min-height: 26px;
+        padding: 5px 8px;
+        border: 1px solid #dcd8ff;
+        border-radius: 8px;
+        color: var(--primary);
+        background: #fff;
+        font-size: 11px;
+        font-weight: 800;
+        cursor: pointer;
+        opacity: 0;
+        transition: 0.2s;
+      }
+
+      .question-card-wrap:hover .question-repeat,
+      .question-repeat:focus-visible {
+        opacity: 1;
+      }
+
+      .question-repeat:hover {
+        background: var(--soft);
+      }
+
       .question-card.active {
         border-color: var(--primary);
         background: var(--soft);
@@ -1122,6 +1149,39 @@
       .chat-status.completed {
         color: #21855f;
         background: #e6f6ee;
+      }
+
+      .chat-attempt {
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .chat-attempt-select {
+        min-height: 26px;
+        max-width: 120px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: var(--ink);
+        background: #fff;
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .chat-repeat-btn {
+        min-height: 26px;
+        padding: 5px 9px;
+        border: 1px solid #dcd8ff;
+        border-radius: 8px;
+        color: var(--primary);
+        background: #fff;
+        font-size: 11px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .chat-repeat-btn:hover {
+        background: var(--soft);
       }
 
       .chat-topic p {
@@ -2137,9 +2197,22 @@
               <div class="chat-topic hidden">
                 <div class="chat-topic-head">
                   <span>正在讨论</span>
+                  <em class="chat-attempt" id="chatAttemptLabel">第 1 次作答</em>
+                  <select
+                    class="chat-attempt-select"
+                    id="attemptSelect"
+                    aria-label="切换作答轮次"
+                  ></select>
                   <strong class="chat-status" id="chatCompletionStatus">
                     进行中
                   </strong>
+                  <button
+                    type="button"
+                    class="chat-repeat-btn"
+                    id="repeatQuestionBtn"
+                  >
+                    再答一次
+                  </button>
                 </div>
                 <p id="activeQuestion"></p>
               </div>
@@ -2386,6 +2459,7 @@
         books: [],
         activeBookId: null,
         activeQuestions: {},
+        activeAttempts: {},
         bookViews: {},
         questionSorts: {},
         chats: {},
@@ -2584,6 +2658,159 @@
           JSON.stringify(state.questionSorts),
         );
       }
+      function attemptKey(bookId, questionId, attemptId) {
+        return `${bookId}::${questionId}::${attemptId}`;
+      }
+      function legacyAttemptKey(bookId, questionId) {
+        return `${bookId}::${questionId}`;
+      }
+      function readAttemptParts(key) {
+        const parts = String(key || "").split("::");
+        if (parts.length < 2) {
+          return null;
+        }
+        return {
+          bookId: parts[0],
+          questionId: parts[1],
+          attemptId: parts.slice(2).join("::"),
+        };
+      }
+      function attemptKeyPrefix(bookId, questionId) {
+        return `${bookId}::${questionId}::`;
+      }
+      function normalizeChatSession(session, fallbackAttemptId, fallbackNumber) {
+        if (
+          !session ||
+          typeof session !== "object" ||
+          !Array.isArray(session.messages)
+        ) {
+          return null;
+        }
+        const messages = session.messages
+          .filter(
+            (message) =>
+              message &&
+              (message.role === "ai" || message.role === "user") &&
+              typeof message.text === "string",
+          )
+          .map((message) => ({
+            id:
+              typeof message.id === "string" && message.id
+                ? message.id
+                : makeId("msg"),
+            role: message.role,
+            text: message.text,
+          }));
+        if (!messages.length) {
+          return null;
+        }
+        return {
+          attemptId:
+            typeof session.attemptId === "string" && session.attemptId
+              ? session.attemptId
+              : fallbackAttemptId,
+          attemptNumber:
+            Number.isInteger(session.attemptNumber) && session.attemptNumber > 0
+              ? session.attemptNumber
+              : fallbackNumber,
+          messages,
+          first:
+            typeof session.first === "boolean"
+              ? session.first
+              : !messages.some((message) => message.role === "user"),
+          replyIndex: Math.max(0, Number(session.replyIndex) || 0),
+          completed: session.completed === true,
+          updatedAt:
+            typeof session.updatedAt === "string" ? session.updatedAt : "",
+        };
+      }
+      function migrateLegacyQuestionAttempt(bookId, questionId) {
+        const legacyKey = legacyAttemptKey(bookId, questionId);
+        if (!state.chats[legacyKey]) {
+          return false;
+        }
+        const session = normalizeChatSession(state.chats[legacyKey], "attempt-1", 1);
+        delete state.chats[legacyKey];
+        if (!session) {
+          saveChats();
+          return false;
+        }
+        state.chats[attemptKey(bookId, questionId, session.attemptId)] = session;
+        saveChats();
+        return true;
+      }
+      function makeAttemptSession(question, attemptNumber) {
+        return {
+          attemptId: makeId("attempt"),
+          attemptNumber,
+          messages: [
+            {
+              id: makeId("msg"),
+              role: "ai",
+              text: question.text,
+            },
+          ],
+          first: true,
+          replyIndex: 0,
+          completed: false,
+          updatedAt: "",
+        };
+      }
+      function attemptsForQuestion(bookId, questionId) {
+        migrateLegacyQuestionAttempt(bookId, questionId);
+        return Object.entries(state.chats)
+          .filter(([key]) => key.startsWith(attemptKeyPrefix(bookId, questionId)))
+          .map(([key, session]) => ({
+            key,
+            session,
+          }))
+          .sort((a, b) => {
+            const numberDiff =
+              Number(a.session.attemptNumber || 0) -
+              Number(b.session.attemptNumber || 0);
+            if (numberDiff) {
+              return numberDiff;
+            }
+            return String(a.session.updatedAt || "").localeCompare(
+              String(b.session.updatedAt || ""),
+            );
+          });
+      }
+      function latestAttemptForQuestion(bookId, questionId) {
+        const attempts = attemptsForQuestion(bookId, questionId);
+        if (!attempts.length) {
+          return null;
+        }
+        return attempts.reduce((latest, item) => {
+          const latestTime = activityTimeValue(latest.session),
+            itemTime = activityTimeValue(item.session);
+          if (itemTime !== latestTime) {
+            return itemTime > latestTime ? item : latest;
+          }
+          return Number(item.session.attemptNumber || 0) >
+            Number(latest.session.attemptNumber || 0)
+            ? item
+            : latest;
+        });
+      }
+      function createQuestionAttempt(bookItem, questionId) {
+        const question = bookItem.questions.find((item) => item.id === questionId);
+        if (!question) {
+          return null;
+        }
+        const attemptNumber = attemptsForQuestion(bookItem.id, questionId).length + 1,
+          session = makeAttemptSession(question, attemptNumber),
+          key = attemptKey(bookItem.id, questionId, session.attemptId);
+        session.updatedAt = new Date().toISOString();
+        state.chats[key] = session;
+        state.activeQuestions[bookItem.id] = questionId;
+        state.activeAttempts[bookItem.id] = session.attemptId;
+        state.bookViews[bookItem.id] = true;
+        bookItem.updatedAt = session.updatedAt;
+        saveShelf();
+        saveChats();
+        return session;
+      }
       function questionSortMode(bookId) {
         return state.questionSorts[bookId] || "batch";
       }
@@ -2606,40 +2833,27 @@
         }
         if (!raw || typeof raw !== "object" || Array.isArray(raw)) return;
         Object.entries(raw).forEach(([key, session]) => {
+          const parts = readAttemptParts(key);
           if (
-            !key.includes("::") ||
+            !parts ||
             !session ||
             typeof session !== "object" ||
             !Array.isArray(session.messages)
           )
             return;
-          const messages = session.messages
-            .filter(
-              (message) =>
-                message &&
-                (message.role === "ai" || message.role === "user") &&
-                typeof message.text === "string",
-            )
-            .map((message) => ({
-              id:
-                typeof message.id === "string" && message.id
-                  ? message.id
-                  : ((migrated = true), makeId("msg")),
-              role: message.role,
-              text: message.text,
-            }));
-          if (!messages.length) return;
-          state.chats[key] = {
-            messages,
-            first:
-              typeof session.first === "boolean"
-                ? session.first
-                : !messages.some((message) => message.role === "user"),
-            replyIndex: Math.max(0, Number(session.replyIndex) || 0),
-            completed: session.completed === true,
-            updatedAt:
-              typeof session.updatedAt === "string" ? session.updatedAt : "",
-          };
+          const isLegacyKey = !parts.attemptId,
+            attemptId =
+              parts.attemptId ||
+              (typeof session.attemptId === "string" && session.attemptId
+                ? session.attemptId
+                : "attempt-1"),
+            normalizedKey = attemptKey(parts.bookId, parts.questionId, attemptId);
+          const normalizedSession = normalizeChatSession(session, attemptId, 1);
+          if (!normalizedSession) return;
+          state.chats[normalizedKey] = normalizedSession;
+          if (isLegacyKey || normalizedKey !== key) {
+            migrated = true;
+          }
         });
         if (migrated) saveChats();
       }
@@ -2682,6 +2896,9 @@
               bookTitle: note.bookTitle,
               questionId:
                 typeof note.questionId === "string" ? note.questionId : "",
+              attemptId:
+                typeof note.attemptId === "string" ? note.attemptId : "",
+              attemptNumber: Math.max(1, Number(note.attemptNumber) || 1),
               questionText: note.questionText,
               role: note.role,
               text: note.text,
@@ -2760,10 +2977,10 @@
         saveActivity();
         renderRecords();
       }
-      function recordCompletedQuestion(bookId, questionId) {
+      function recordCompletedQuestion(bookId, questionId, attemptId) {
         const today = localDate(),
-          completedKey = `${bookId}::${questionId}`;
-        if (!bookId || !questionId) return false;
+          completedKey = attemptKey(bookId, questionId, attemptId);
+        if (!bookId || !questionId || !attemptId) return false;
         if (!activity.days[today])
           activity.days[today] = {
             count: 0,
@@ -2918,7 +3135,9 @@
                 note.role === "ai" ? "AI 回复" : "我的回答"
               }</span></div><p class="note-question">来自问题：${escapeHtml(
                 note.questionText,
-              )}</p><p class="note-text">${escapeHtml(
+              )} · 第 ${escapeHtml(
+                note.attemptNumber || 1,
+              )} 次作答</p><p class="note-text">${escapeHtml(
                 note.text,
               )}</p><div class="note-card-meta"><time>${escapeHtml(
                 formatNoteTime(note.savedAt),
@@ -2931,8 +3150,12 @@
       function book() {
         return state.books.find((b) => b.id === state.activeBookId);
       }
-      function chatKey(qid) {
-        return `${state.activeBookId}::${qid}`;
+      function activeSession(bookId, questionId) {
+        const attemptId = state.activeAttempts[bookId];
+        if (!attemptId) {
+          return null;
+        }
+        return state.chats[attemptKey(bookId, questionId, attemptId)] || null;
       }
       function isMessageCollected(messageId) {
         return state.notes.some((note) => note.sourceMessageId === messageId);
@@ -2941,10 +3164,9 @@
         if (isMessageCollected(messageId)) return;
         const b = book(),
           qid = state.activeQuestions[b.id],
+          session = activeSession(b.id, qid),
           question = b.questions.find((item) => item.id === qid),
-          message = state.chats[chatKey(qid)]?.messages.find(
-            (item) => item.id === messageId,
-          );
+          message = session?.messages.find((item) => item.id === messageId);
         if (!question || !message) return;
         state.notes.unshift({
           id: makeId("note"),
@@ -2952,6 +3174,8 @@
           bookId: b.id,
           bookTitle: b.title,
           questionId: question.id,
+          attemptId: session.attemptId || "",
+          attemptNumber: Math.max(1, Number(session.attemptNumber) || 1),
           questionText: question.text,
           role: message.role,
           text: message.text,
@@ -3028,6 +3252,7 @@
         $("#questionView").classList.add("hidden");
         $("#emptyState").classList.remove("hidden");
         $("#chatView").classList.remove("active");
+        $("#chatView .chat-topic").classList.add("hidden");
         $("#workspace").classList.remove("chatting");
         $("#backBtn").classList.add("hidden");
         $("#openChapter").disabled = true;
@@ -3157,9 +3382,13 @@
               }</div>${group.items
                 .map((q) => {
                   index++;
-                  const session = state.chats[chatKey(q.id)],
-                    saved = session?.messages.length > 1,
-                    completed = session?.completed === true,
+                  const attempts = attemptsForQuestion(b.id, q.id),
+                    answeredCount = attempts.filter(
+                      ({ session }) => session.messages.length > 1,
+                    ).length,
+                    completedCount = attempts.filter(
+                      ({ session }) => session.completed === true,
+                    ).length,
                     displayBatchLabel = (q.batchLabel || "")
                       .replace(/\s*·\s*自动生成/g, "")
                       .trim(),
@@ -3183,12 +3412,18 @@
                   )}</strong><small>${escapeHtml(
                     meta,
                   )}</small><span class="question-arrow">→</span>${
-                    completed
-                      ? '<span class="saved-mark completed">✓ 已完成</span>'
-                      : saved
-                        ? '<span class="saved-mark">● 有对话</span>'
+                    completedCount
+                      ? `<span class="saved-mark completed">✓ 完成 ${completedCount} 次</span>`
+                      : answeredCount
+                        ? `<span class="saved-mark">● 已答 ${answeredCount} 次</span>`
                         : ""
-                  }</button><button class="question-delete" type="button" data-delete-question="${escapeHtml(
+                  }</button>${
+                    answeredCount
+                      ? `<button class="question-repeat" type="button" data-repeat-question="${escapeHtml(
+                          q.id,
+                        )}">再答一次</button>`
+                      : ""
+                  }<button class="question-delete" type="button" data-delete-question="${escapeHtml(
                     q.id,
                   )}" aria-label="删除问题：${escapeHtml(
                     q.text,
@@ -3314,6 +3549,7 @@
           }
         });
         delete state.activeQuestions[b.id];
+        delete state.activeAttempts[b.id];
         delete state.bookViews[b.id];
         delete state.questionSorts[b.id];
         state.activeBookId = sortedBooksByStudy()[0]?.id || null;
@@ -3326,12 +3562,14 @@
       function renderView() {
         const b = book(),
           qid = state.activeQuestions[b.id],
-          chatting = !!state.bookViews[b.id] && !!qid;
+          session = activeSession(b.id, qid),
+          chatting = !!state.bookViews[b.id] && !!qid && !!session;
         if (!b.questions.length) {
           $("#workspace").classList.remove("chatting");
           $("#questionView").classList.add("hidden");
           $("#emptyState").classList.remove("hidden");
           $("#chatView").classList.remove("active");
+          $("#chatView .chat-topic").classList.add("hidden");
           $("#backBtn").classList.add("hidden");
           $("#subtitle").textContent = state.generating
             ? "AI 正在生成第一批问题"
@@ -3342,6 +3580,7 @@
         $("#questionView").classList.remove("hidden");
         $("#workspace").classList.toggle("chatting", chatting);
         $("#chatView").classList.toggle("active", chatting);
+        $("#chatView .chat-topic").classList.toggle("hidden", !chatting);
         $("#backBtn").classList.toggle("hidden", !chatting);
         $("#subtitle").textContent = chatting
           ? "你的每段讨论都会自动保存"
@@ -3353,38 +3592,69 @@
       function openQuestion(qid) {
         const b = book(),
           q = b.questions.find((x) => x.id === qid);
+        if (!q) return;
         state.activeQuestions[b.id] = qid;
         state.bookViews[b.id] = true;
-        const key = chatKey(qid);
-        if (!state.chats[key]) {
-          state.chats[key] = {
-            messages: [
-              {
-                id: makeId("msg"),
-                role: "ai",
-                text: q.text,
-              },
-            ],
-            first: true,
-            replyIndex: 0,
-            completed: false,
-            updatedAt: "",
-          };
-          saveChats();
-        } else if (
-          !state.chats[key].messages.length ||
-          state.chats[key].messages[0]?.role === "user"
-        ) {
-          state.chats[key].messages.unshift({
-            id: makeId("msg"),
-            role: "ai",
-            text: q.text,
-          });
-          saveChats();
+        const latest = latestAttemptForQuestion(b.id, qid);
+        if (latest) {
+          state.activeAttempts[b.id] = latest.session.attemptId;
+          if (
+            !latest.session.messages.length ||
+            latest.session.messages[0]?.role === "user"
+          ) {
+            latest.session.messages.unshift({
+              id: makeId("msg"),
+              role: "ai",
+              text: q.text,
+            });
+            saveChats();
+          }
+        } else {
+          createQuestionAttempt(b, qid);
         }
         renderQuestions();
         renderView();
         setTimeout(() => $("#input").focus(), 100);
+      }
+      function repeatQuestion(qid) {
+        const b = book();
+        if (!b) return;
+        const session = createQuestionAttempt(b, qid);
+        if (!session) return;
+        renderQuestions();
+        renderShelf();
+        renderView();
+        setTimeout(() => $("#input").focus(), 100);
+        toast(`已开始第 ${session.attemptNumber} 次作答`);
+      }
+      function switchAttempt(attemptId) {
+        const b = book(),
+          qid = b ? state.activeQuestions[b.id] : "";
+        if (!b || !qid || !attemptId) return;
+        const key = attemptKey(b.id, qid, attemptId);
+        if (!state.chats[key]) return;
+        state.activeAttempts[b.id] = attemptId;
+        state.bookViews[b.id] = true;
+        renderQuestions();
+        renderView();
+        setTimeout(() => $("#input").focus(), 100);
+      }
+      function deleteQuestionAttempts(bookId, questionId) {
+        Object.keys(state.chats).forEach((key) => {
+          if (key.startsWith(attemptKeyPrefix(bookId, questionId))) {
+            delete state.chats[key];
+          }
+        });
+      }
+      function ensureQuestionAttemptText(question, session) {
+        if (!session.messages.length || session.messages[0]?.role === "user") {
+          session.messages.unshift({
+            id: makeId("msg"),
+            role: "ai",
+            text: question.text,
+          });
+          saveChats();
+        }
       }
       function deleteQuestion(qid) {
         const b = book(),
@@ -3400,9 +3670,10 @@
             b.deletedQuestionIds.push(qid);
           }
         }
-        delete state.chats[chatKey(qid)];
+        deleteQuestionAttempts(b.id, qid);
         if (state.activeQuestions[b.id] === qid) {
           delete state.activeQuestions[b.id];
+          delete state.activeAttempts[b.id];
           state.bookViews[b.id] = false;
         }
         saveShelf();
@@ -3412,9 +3683,25 @@
       }
       function restoreChat(qid) {
         const q = book().questions.find((x) => x.id === qid),
-          session = state.chats[chatKey(qid)];
+          session = activeSession(state.activeBookId, qid);
+        if (!q || !session) {
+          return;
+        }
+        ensureQuestionAttemptText(q, session);
         const completed = session.completed === true;
+        const attempts = attemptsForQuestion(state.activeBookId, qid);
         $("#activeQuestion").textContent = q.text;
+        $("#chatAttemptLabel").textContent = `第 ${
+          session.attemptNumber || 1
+        } 次作答`;
+        $("#attemptSelect").innerHTML = attempts
+          .map(
+            ({ session: item }) =>
+              `<option value="${escapeHtml(item.attemptId)}" ${
+                item.attemptId === session.attemptId ? "selected" : ""
+              }>第 ${escapeHtml(item.attemptNumber || 1)} 次</option>`,
+          )
+          .join("");
         $("#chatCompletionStatus").textContent = completed ? "已完成" : "进行中";
         $("#chatCompletionStatus").classList.toggle("completed", completed);
         $("#messages").innerHTML = session.messages
@@ -3497,11 +3784,14 @@
       async function send(text) {
         const value = text.trim(),
           b = book(),
-          qid = state.activeQuestions[b.id];
-        if (!value || state.busy || !qid) return;
-        const session = state.chats[chatKey(qid)],
+          qid = state.activeQuestions[b.id],
+          attemptId = state.activeAttempts[b.id];
+        if (!value || state.busy || !qid || !attemptId) return;
+        const session = activeSession(b.id, qid),
           q = b.questions.find((x) => x.id === qid),
-          userMessage = { id: makeId("msg"), role: "user", text: value },
+          wasCompleted = session?.completed === true;
+        if (!session || !q) return;
+        const userMessage = { id: makeId("msg"), role: "user", text: value },
           pendingMessages = [...session.messages, userMessage].map(
             ({ role, text: messageText }) => ({
               role,
@@ -3546,13 +3836,14 @@
           saveShelf();
           saveChats();
           recordSubmission();
-          if (data.completed === true) {
-            recordCompletedQuestion(b.id, qid);
+          if (data.completed === true && !wasCompleted) {
+            recordCompletedQuestion(b.id, qid, session.attemptId || attemptId);
           }
           thinkingElement.remove();
           if (
             state.activeBookId === b.id &&
-            state.activeQuestions[b.id] === qid
+            state.activeQuestions[b.id] === qid &&
+            state.activeAttempts[b.id] === attemptId
           ) {
             restoreChat(qid);
             renderQuestions();
@@ -3565,7 +3856,8 @@
           toast(error.message || "发送失败，请稍后重试");
           if (
             state.activeBookId === b.id &&
-            state.activeQuestions[b.id] === qid
+            state.activeQuestions[b.id] === qid &&
+            state.activeAttempts[b.id] === attemptId
           ) {
             renderSuggestions(session.first ? [] : followUps);
             $("#input").value = value;
@@ -4169,6 +4461,11 @@
           deleteQuestion(deleteButton.dataset.deleteQuestion);
           return;
         }
+        const repeatButton = e.target.closest("[data-repeat-question]");
+        if (repeatButton) {
+          repeatQuestion(repeatButton.dataset.repeatQuestion);
+          return;
+        }
         const q = e.target.closest("[data-question]");
         if (q) openQuestion(q.dataset.question);
       });
@@ -4184,6 +4481,16 @@
         if (button && !button.disabled) {
           collectMessage(button.dataset.collectMessage);
         }
+      });
+      $("#repeatQuestionBtn").addEventListener("click", () => {
+        const b = book(),
+          qid = b ? state.activeQuestions[b.id] : "";
+        if (qid) {
+          repeatQuestion(qid);
+        }
+      });
+      $("#attemptSelect").addEventListener("change", (e) => {
+        switchAttempt(e.target.value);
       });
       $("#backBtn").addEventListener("click", () => {
         state.bookViews[state.activeBookId] = false;
