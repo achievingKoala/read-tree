@@ -133,6 +133,12 @@ async function callOpenRouter(messages, options = {}) {
       messages,
       temperature: 0.7,
     };
+    if (Array.isArray(options.tools) && options.tools.length) {
+      requestBody.tools = options.tools;
+    }
+    if (Number.isInteger(options.maxToolCalls) && options.maxToolCalls > 0) {
+      requestBody.max_tool_calls = options.maxToolCalls;
+    }
 
     const upstream = await fetch(OPENROUTER_URL, {
       method: "POST",
@@ -316,12 +322,12 @@ async function handleChapters(request, response) {
 格式为 {"confidence":"high|low","warning":"给用户的简短核对提醒","chapters":[{"title":"章节名","summary":"章节简介"}]}。
 
 要求：
-1. 只依据模型已有知识整理章节，不得联网搜索，也不得声称已经查询了外部来源。
-2. 如果无法可靠确认目录，必须将 confidence 设为 low，并在 warning 中提醒用户核对具体版本。
+1. 先联网搜索并核对公开目录信息；不要只凭模型记忆生成目录。
+2. 如果联网结果无法可靠确认目录，必须将 confidence 设为 low，并在 warning 中提醒用户核对具体版本。
 3. 可以在正式正文目录前加入一个“前言”或“序言”；正文从第一章开始，保持原有顺序，不加入推荐序、附录或致谢。
 4. title 不包含章节序号。
 5. summary 用 1–2 句话概括本章主题，最多 160 个汉字；不得编造无法确认的人物、情节、观点或引文。
-6. 只有多个可靠来源相互印证，且高度确信书籍及常见版本目录时 confidence 才能为 high，否则必须为 low。
+6. 只有联网结果中多个可靠来源相互印证，且高度确信书籍及常见版本目录时 confidence 才能为 high，否则必须为 low。
 7. 不确定时不要假装准确；warning 应明确说明可能存在版本差异并建议用户核对。confidence 为 high 时 warning 可以为空字符串。`,
       },
       {
@@ -331,6 +337,19 @@ async function handleChapters(request, response) {
     ],
     {
       model: process.env.OPENROUTER_CHAPTER_MODEL || "openai/gpt-5.4",
+      tools: [
+        {
+          type: "openrouter:web_search",
+          parameters: {
+            engine: "auto",
+            max_results: 5,
+            max_total_results: 10,
+            max_uses: 3,
+            search_context_size: "medium",
+          },
+        },
+      ],
+      maxToolCalls: 3,
       timeoutMs: 90_000,
     }
   );
