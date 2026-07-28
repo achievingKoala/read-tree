@@ -6,6 +6,7 @@ const ROOT = __dirname;
 const MAX_BODY_BYTES = 250_000;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const QUESTIONS_PER_BATCH = 3;
+const ACTIVATION_PROJECT = process.env.ACTIVATION_PROJECT || "read-tree";
 
 loadEnv(path.join(ROOT, ".env"));
 
@@ -93,6 +94,186 @@ function readJson(request) {
 }
 
 class ClientError extends Error {}
+
+function isActivationRequired() {
+  return process.env.ACTIVATION_REQUIRED === "true";
+}
+
+function getSupabaseConfig() {
+  const url = optionalString(process.env.SUPABASE_URL, "Supabase URL", 300);
+  const key = optionalString(
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    "Supabase Service Role Key",
+    1_000
+  );
+
+  if (!url || !key) {
+    return null;
+  }
+
+  return {
+    url: url.replace(/\/+$/, ""),
+    key,
+  };
+}
+
+function normalizeActivationCode(value) {
+  return requiredString(value, "激活码", 80).toUpperCase();
+}
+
+function requiredClientId(value) {
+  const clientId = requiredString(value, "客户端标识", 120);
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      clientId
+    )
+  ) {
+    throw new ClientError("客户端标识格式无效");
+  }
+  return clientId;
+}
+
+async function supabaseRequest(pathname, options = {}) {
+  const config = getSupabaseConfig();
+  if (!config) {
+    throw new ClientError("激活码系统尚未配置，请先设置 Supabase 环境变量");
+  }
+
+  const upstream = await fetch(`${config.url}/rest/v1${pathname}`, {
+    method: options.method || "GET",
+    headers: {
+      apikey: config.key,
+      Authorization: `Bearer ${config.key}`,
+      "Content-Type": "application/json",
+      Prefer: options.prefer || "return=representation",
+      ...options.headers,
+    },
+    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+  });
+
+  let data = null;
+  const text = await upstream.text();
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch (_error) {
+      data = text;
+    }
+  }
+
+  if (!upstream.ok) {
+    const message =
+      typeof data?.message === "string"
+        ? data.message
+        : typeof data === "string"
+          ? data
+          : `Supabase returned ${upstream.status}`;
+    if (data?.code === "P0001") {
+      throw new ClientError(message);
+    }
+    const error = new Error(message);
+    error.publicMessage = "激活码系统暂时不可用，请稍后重试";
+    throw error;
+  }
+
+  return data;
+}
+
+function normalizeQuotaRow(row) {
+  return {
+    remainingUses: Number(row?.remaining_reviews || 0),
+    totalGranted: Number(row?.total_granted || 0),
+    totalUsed: Number(row?.total_used || 0),
+  };
+}
+
+async function getClientQuota(clientId) {
+  const rows = await supabaseRequest(
+    `/client_quotas?client_id=eq.${encodeURIComponent(
+      clientId
+    )}&project_name=eq.${encodeURIComponent(
+      ACTIVATION_PROJECT
+    )}&select=remaining_reviews,total_granted,total_used&limit=1`,
+    {
+      method: "GET",
+    }
+  );
+
+  return normalizeQuotaRow(Array.isArray(rows) ? rows[0] : null);
+}
+
+async function redeemActivationCode(clientId, code) {
+  const rows = await supabaseRequest("/rpc/redeem_activation_code", {
+    method: "POST",
+    body: {
+      p_client_id: clientId,
+      p_code: code,
+      p_project_name: ACTIVATION_PROJECT,
+    },
+  });
+  const row = Array.isArray(rows) ? rows[0] : rows;
+  return normalizeQuotaRow(row);
+}
+
+async function spendClientQuota(clientId, reason) {
+  const rows = await supabaseRequest("/rpc/spend_client_quota", {
+    method: "POST",
+    body: {
+      p_client_id: clientId,
+      p_reason: reason,
+      p_project_name: ACTIVATION_PROJECT,
+    },
+  });
+  const row = Array.isArray(rows) ? rows[0] : rows;
+  return normalizeQuotaRow(row);
+}
+
+async function refundClientQuota(clientId, reason) {
+  const rows = await supabaseRequest("/rpc/refund_client_quota", {
+    method: "POST",
+    body: {
+      p_client_id: clientId,
+      p_reason: reason,
+      p_project_name: ACTIVATION_PROJECT,
+    },
+  });
+  const row = Array.isArray(rows) ? rows[0] : rows;
+  return normalizeQuotaRow(row);
+}
+
+async function withQuota(clientId, reason, work) {
+  if (!isActivationRequired()) {
+    return {
+      result: await work(),
+      quota: null,
+    };
+  }
+
+  const quota = await spendClientQuota(clientId, reason);
+  try {
+    return {
+      result: await work(),
+      quota,
+    };
+  } catch (error) {
+    try {
+      await refundClientQuota(clientId, `${reason}:refund`);
+    } catch (refundError) {
+      console.error("Quota refund failed:", refundError);
+    }
+    throw error;
+  }
+}
+
+function attachQuota(payload, quota) {
+  if (!quota) {
+    return payload;
+  }
+  return {
+    ...payload,
+    quota,
+  };
+}
 
 function requiredString(value, label, maxLength) {
   if (typeof value !== "string" || !value.trim()) {
@@ -195,13 +376,53 @@ function cleanJsonContent(content) {
   return cleaned;
 }
 
-function parseQuestions(content, expectedCount = QUESTIONS_PER_BATCH) {
+function parseJsonContent(content, label) {
   const cleaned = cleanJsonContent(content);
+  try {
+    return JSON.parse(cleaned);
+  } catch (_error) {
+    const firstObject = cleaned.indexOf("{");
+    const lastObject = cleaned.lastIndexOf("}");
+    if (firstObject >= 0 && lastObject > firstObject) {
+      const objectSlice = cleaned.slice(firstObject, lastObject + 1);
+      try {
+        return JSON.parse(objectSlice);
+      } catch (_objectError) {
+        // Try an array payload below.
+      }
+    }
+
+    const firstArray = cleaned.indexOf("[");
+    const lastArray = cleaned.lastIndexOf("]");
+    if (firstArray >= 0 && lastArray > firstArray) {
+      const arraySlice = cleaned.slice(firstArray, lastArray + 1);
+      try {
+        return JSON.parse(arraySlice);
+      } catch (_arrayError) {
+        // Fall through to the shared error path.
+      }
+    }
+
+    console.error(`${label} is not JSON:`, cleaned.slice(0, 2_000));
+    throw new Error(`${label} is not JSON`);
+  }
+}
+
+function parseQuestions(content, expectedCount = QUESTIONS_PER_BATCH) {
   let parsed;
   try {
-    parsed = JSON.parse(cleaned);
-  } catch (_error) {
-    throw new Error("AI question response is not JSON");
+    parsed = parseJsonContent(content, "AI question response");
+  } catch (error) {
+    const cleaned = cleanJsonContent(content).trim();
+    if (
+      cleaned.startsWith('{"questions":[') &&
+      cleaned.endsWith("}") &&
+      !cleaned.endsWith("]}")
+    ) {
+      parsed = JSON.parse(`${cleaned.slice(0, -1)}]}`);
+    } else {
+      throw error;
+    }
   }
 
   const questions = Array.isArray(parsed) ? parsed : parsed.questions;
@@ -218,14 +439,7 @@ function parseQuestions(content, expectedCount = QUESTIONS_PER_BATCH) {
 }
 
 function parseChatReply(content) {
-  const cleaned = cleanJsonContent(content);
-  let parsed;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (_error) {
-    console.error("AI chat response is not JSON:", cleaned.slice(0, 2_000));
-    throw new Error("AI chat response is not valid JSON");
-  }
+  const parsed = parseJsonContent(content, "AI chat response");
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("AI chat response must be an object");
@@ -249,14 +463,7 @@ function describeChapter(chapter, chapterTitle = "") {
 }
 
 function parseChapters(content) {
-  const cleaned = cleanJsonContent(content);
-  let parsed;
-  try {
-    parsed = JSON.parse(cleaned);
-  } catch (_error) {
-    console.error("AI chapter response is not JSON:", cleaned.slice(0, 2_000));
-    throw new Error("AI chapter response is not valid JSON");
-  }
+  const parsed = parseJsonContent(content, "AI chapter response");
 
   const confidence = parsed?.confidence;
   if (confidence !== "high" && confidence !== "low") {
@@ -267,7 +474,7 @@ function parseChapters(content) {
   if (!Array.isArray(chapters)) {
     console.error(
       "AI chapter response has no chapters array:",
-      cleaned.slice(0, 2_000)
+      cleanJsonContent(content).slice(0, 2_000)
     );
     throw new Error(
       `AI chapter response chapters must be an array, received ${
@@ -278,7 +485,7 @@ function parseChapters(content) {
   if (chapters.length < 1 || chapters.length > 200) {
     console.error(
       `AI chapter response returned ${chapters.length} chapters:`,
-      cleaned.slice(0, 2_000)
+      cleanJsonContent(content).slice(0, 2_000)
     );
     throw new Error(
       `AI chapter response has ${chapters.length} chapters; expected 1 to 200`
@@ -313,13 +520,18 @@ function parseChapters(content) {
 
 async function handleChapters(request, response) {
   const body = await readJson(request);
+  const clientId = requiredClientId(body.clientId);
   const title = requiredString(body.title, "书名", 80);
   const author = optionalString(body.author, "作者", 80);
-  const content = await callOpenRouter(
-    [
-      {
-        role: "system",
-        content: `你是谨慎的图书目录助手。请输出严格 JSON，不要 Markdown。
+  const { result, quota } = await withQuota(
+    clientId,
+    "chapters",
+    async () => {
+      const content = await callOpenRouter(
+        [
+          {
+            role: "system",
+            content: `你是谨慎的图书目录助手。请输出严格 JSON，不要 Markdown。
 格式为 {"confidence":"high|low","warning":"给用户的简短核对提醒","chapters":[{"title":"章节名","summary":"章节简介"}]}。
 
 要求：
@@ -330,36 +542,40 @@ async function handleChapters(request, response) {
 5. summary 用 1–2 句话概括本章主题，最多 160 个汉字；不得编造无法确认的人物、情节、观点或引文。
 6. 只有联网结果中多个可靠来源相互印证，且高度确信书籍及常见版本目录时 confidence 才能为 high，否则必须为 low。
 7. 不确定时不要假装准确；warning 应明确说明可能存在版本差异并建议用户核对。confidence 为 high 时 warning 可以为空字符串。`,
-      },
-      {
-        role: "user",
-        content: `图书：《${title}》\n作者：${author || "未知"}`,
-      },
-    ],
-    {
-      model: process.env.OPENROUTER_CHAPTER_MODEL || "openai/gpt-5.4",
-      tools: [
-        {
-          type: "openrouter:web_search",
-          parameters: {
-            engine: "auto",
-            max_results: 5,
-            max_total_results: 10,
-            max_uses: 3,
-            search_context_size: "medium",
           },
+          {
+            role: "user",
+            content: `图书：《${title}》\n作者：${author || "未知"}`,
+          },
+        ],
+        {
+          model: process.env.OPENROUTER_CHAPTER_MODEL || "openai/gpt-5.4",
+          tools: [
+            {
+              type: "openrouter:web_search",
+              parameters: {
+                engine: "auto",
+                max_results: 5,
+                max_total_results: 10,
+                max_uses: 3,
+                search_context_size: "medium",
+              },
+            },
+          ],
+          maxToolCalls: 3,
+          timeoutMs: 90_000,
         },
-      ],
-      maxToolCalls: 3,
-      timeoutMs: 90_000,
+      );
+      return parseChapters(content);
     }
   );
 
-  sendJson(response, 200, parseChapters(content));
+  sendJson(response, 200, attachQuota(result, quota));
 }
 
 async function handleQuestions(request, response) {
   const body = await readJson(request);
+  const clientId = requiredClientId(body.clientId);
   const title = requiredString(body.title, "书名", 80);
   const author = optionalString(body.author, "作者", 80);
   const chapter = Number(body.chapter);
@@ -386,10 +602,14 @@ async function handleQuestions(request, response) {
     grounding =
       "没有可靠的章节正文或摘要。只能生成引导用户回到本章查找证据的开放式问题，不得声称任何具体情节一定存在。";
   }
-  const content = await callOpenRouter([
-    {
-      role: "system",
-      content: `你是中文阅读教练。
+  const { result, quota } = await withQuota(
+    clientId,
+    "questions",
+    async () => {
+      const content = await callOpenRouter([
+        {
+          role: "system",
+          content: `你是中文阅读教练。
 
 任务：
 为指定章节生成 ${questionCount} 道阅读理解题，引导用户回到原文找依据。
@@ -416,22 +636,26 @@ async function handleQuestions(request, response) {
 输出严格 JSON，不要 Markdown：
 {"questions":[{"tag":"短标签","text":"问题"}]}
 每个问题对象只能包含 tag 和 text。`,
-    },
-    {
-      role: "user",
-      content: `图书：《${title}》\n作者：${
-        author || "未知"
-      }\n章节：${describeChapter(chapter, chapterTitle)}\n${grounding}`,
-    },
-  ]);
+        },
+        {
+          role: "user",
+          content: `图书：《${title}》\n作者：${
+            author || "未知"
+          }\n章节：${describeChapter(chapter, chapterTitle)}\n${grounding}`,
+        },
+      ]);
+      return {
+        questions: parseQuestions(content, questionCount),
+      };
+    }
+  );
 
-  sendJson(response, 200, {
-    questions: parseQuestions(content, questionCount),
-  });
+  sendJson(response, 200, attachQuota(result, quota));
 }
 
 async function handleChat(request, response) {
   const body = await readJson(request);
+  const clientId = requiredClientId(body.clientId);
   const book = body.book && typeof body.book === "object" ? body.book : {};
   const title = requiredString(book.title, "书名", 80);
   const author = optionalString(book.author, "作者", 80);
@@ -460,10 +684,14 @@ async function handleChat(request, response) {
     };
   });
 
-  const content = await callOpenRouter([
-    {
-      role: "system",
-      content: `你是耐心、简洁的中文阅读教练。
+  const { result, quota } = await withQuota(
+    clientId,
+    "chat",
+    async () => {
+      const content = await callOpenRouter([
+        {
+          role: "system",
+          content: `你是耐心、简洁的中文阅读教练。
 
 讨论背景：
 正在讨论《${title}》（作者：${author || "未知"}）的问题：“${question}”。
@@ -486,11 +714,52 @@ async function handleChat(request, response) {
 格式为 {"answer":"给用户看的回答","completed":true|false}。
 answer 直接写给用户看，输出纯文本，不要 Markdown， 不要提到 JSON 或字段名。
 completed 表示用户是否已经把当前问题回答完整；如果你还需要继续追问或引导重读，就必须为 false。`,
-    },
-    ...messages,
-  ]);
+        },
+        ...messages,
+      ]);
+      return parseChatReply(content);
+    }
+  );
 
-  sendJson(response, 200, parseChatReply(content));
+  sendJson(response, 200, attachQuota(result, quota));
+}
+
+async function handleQuota(request, response) {
+  const body = await readJson(request);
+  const clientId = requiredClientId(body.clientId);
+  if (!isActivationRequired()) {
+    sendJson(response, 200, {
+      enabled: false,
+      quota: null,
+    });
+    return;
+  }
+
+  sendJson(response, 200, {
+    enabled: true,
+    quota: await getClientQuota(clientId),
+  });
+}
+
+async function handleRedeemCode(request, response) {
+  const body = await readJson(request);
+  const clientId = requiredClientId(body.clientId);
+  const code = normalizeActivationCode(body.code);
+  if (!isActivationRequired()) {
+    sendJson(response, 200, {
+      enabled: false,
+      quota: null,
+      message: "当前未开启激活码限制",
+    });
+    return;
+  }
+
+  const quota = await redeemActivationCode(clientId, code);
+  sendJson(response, 200, {
+    enabled: true,
+    quota,
+    message: "兑换成功",
+  });
 }
 
 function serveIndex(response) {
@@ -548,6 +817,14 @@ const server = http.createServer(async (request, response) => {
     }
     if (request.method === "GET" && url.pathname === "/icon.svg") {
       serveIcon(response);
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/quota") {
+      await handleQuota(request, response);
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/api/redeem-code") {
+      await handleRedeemCode(request, response);
       return;
     }
     if (request.method === "POST" && url.pathname === "/api/questions") {

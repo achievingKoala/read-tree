@@ -143,6 +143,63 @@
         background: var(--primary);
       }
 
+      .quota-form {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.78);
+      }
+
+      .quota-count {
+        min-width: 74px;
+        padding: 0 5px;
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .quota-count strong {
+        color: var(--primary-dark);
+      }
+
+      .quota-input {
+        width: 146px;
+        height: 30px;
+        border: 0;
+        border-left: 1px solid var(--line);
+        outline: 0;
+        padding: 0 9px;
+        background: transparent;
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+
+      .quota-input::placeholder {
+        color: #a3a7b7;
+        text-transform: none;
+      }
+
+      .quota-submit {
+        height: 30px;
+        padding: 0 10px;
+        border: 0;
+        border-radius: 8px;
+        color: #fff;
+        background: var(--primary);
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .quota-submit:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+
       .layout {
         display: grid;
         flex: 1;
@@ -1933,7 +1990,20 @@
         }
 
         .top-actions {
+          flex-wrap: wrap;
+          justify-content: flex-end;
           gap: 8px;
+        }
+
+        .quota-form {
+          order: 4;
+          width: 100%;
+        }
+
+        .quota-input {
+          flex: 1;
+          width: auto;
+          min-width: 0;
         }
 
         .records-page {
@@ -2096,6 +2166,20 @@
           <div class="status">
             <span class="status-dot"></span><span>AI 阅读伙伴在线</span>
           </div>
+          <form class="quota-form" id="quotaForm">
+            <span class="quota-count" id="quotaCount">额度 --</span>
+            <input
+              class="quota-input"
+              id="activationCode"
+              maxlength="80"
+              placeholder="输入激活码"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button class="quota-submit" id="redeemBtn" type="submit">
+              兑换
+            </button>
+          </form>
           <button class="records-nav" id="notebookNav">笔记本</button>
           <button class="records-nav" id="recordsNav">阅读记录</button>
         </div>
@@ -2450,6 +2534,7 @@
         CHATS_STORAGE = "readpage_chats_v1",
         NOTEBOOK_STORAGE = "readpage_notebook_v1",
         QUESTION_SORT_STORAGE = "readpage_question_sort_v1",
+        CLIENT_ID_STORAGE = "readpage_client_id_v1",
         followUps = [
           "这和现实生活有什么关系？",
           "能换一个角度解释吗？",
@@ -2464,6 +2549,8 @@
         questionSorts: {},
         chats: {},
         notes: [],
+        quota: null,
+        quotaEnabled: null,
         busy: false,
         generating: false,
       };
@@ -2481,6 +2568,90 @@
                 .toString(36)
                 .slice(2)}`;
         return `${prefix}-${random}`;
+      }
+      function isUuid(value) {
+        return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          String(value || ""),
+        );
+      }
+      function makeClientUuid() {
+        if (typeof crypto?.randomUUID === "function") {
+          return crypto.randomUUID();
+        }
+        return "00000000-0000-4000-8000-000000000000".replace(/[08]/g, (c) =>
+          (
+            Number(c) ^
+            (crypto.getRandomValues(new Uint8Array(1))[0] &
+              (15 >> (Number(c) / 4)))
+          ).toString(16),
+        );
+      }
+      function ensureClientId() {
+        let clientId = localStorage.getItem(CLIENT_ID_STORAGE);
+        if (!isUuid(clientId)) {
+          clientId = makeClientUuid();
+          localStorage.setItem(CLIENT_ID_STORAGE, clientId);
+        }
+        return clientId;
+      }
+      function applyQuotaPayload(data) {
+        if (!data || typeof data !== "object") {
+          return;
+        }
+        if (typeof data.enabled === "boolean") {
+          state.quotaEnabled = data.enabled;
+        }
+        if (data.quota && typeof data.quota === "object") {
+          state.quota = data.quota;
+        }
+        renderQuota();
+      }
+      function renderQuota() {
+        const count = $("#quotaCount");
+        if (!count) {
+          return;
+        }
+        if (state.quotaEnabled === false) {
+          count.textContent = "额度未启用";
+          return;
+        }
+        if (!state.quota) {
+          count.textContent = "额度 --";
+          return;
+        }
+        count.innerHTML = `额度 <strong>${escapeHtml(
+          state.quota.remainingUses ?? 0,
+        )}</strong>`;
+      }
+      async function refreshQuota() {
+        try {
+          const data = await apiFetch("/api/quota", {});
+          applyQuotaPayload(data);
+        } catch (_error) {
+          state.quotaEnabled = null;
+          state.quota = null;
+          renderQuota();
+        }
+      }
+      async function redeemActivationCodeFromInput() {
+        const input = $("#activationCode"),
+          button = $("#redeemBtn"),
+          code = input.value.trim();
+        if (!code) {
+          toast("请输入激活码");
+          return;
+        }
+        button.disabled = true;
+        try {
+          const data = await apiFetch("/api/redeem-code", { code });
+          applyQuotaPayload(data);
+          input.value = "";
+          toast(data.message || "兑换成功");
+        } catch (error) {
+          toast(error.message || "兑换失败，请稍后重试");
+        } finally {
+          button.disabled = false;
+        }
       }
       function isChapterNumber(value) {
         if (value === undefined || value === null || value === "") {
@@ -3754,7 +3925,10 @@
           const response = await fetch(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
+            body: JSON.stringify({
+              ...(payload || {}),
+              clientId: ensureClientId(),
+            }),
             signal: controller.signal,
           });
           let data = {};
@@ -3766,6 +3940,7 @@
           if (!response.ok) {
             throw new Error(data.error || "AI 服务请求失败");
           }
+          applyQuotaPayload(data);
           return data;
         } catch (error) {
           if (error.name === "AbortError") {
@@ -4493,6 +4668,10 @@
         e.preventDefault();
         send($("#input").value);
       });
+      $("#quotaForm").addEventListener("submit", (e) => {
+        e.preventDefault();
+        redeemActivationCodeFromInput();
+      });
       $("#input").addEventListener("input", (e) => {
         $("#sendBtn").disabled = state.busy || !e.target.value.trim();
         e.target.style.height = "auto";
@@ -4638,6 +4817,7 @@
       loadNotebook();
       renderRecords();
       render();
+      refreshQuota();
     </script>
   </body>
 </html>
