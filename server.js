@@ -10,6 +10,7 @@ const QUESTIONS_PER_BATCH = 3;
 loadEnv(path.join(ROOT, ".env"));
 
 const port = parsePort(process.env.PORT);
+const host = process.env.HOST || "0.0.0.0";
 
 function loadEnv(filePath) {
   if (!fs.existsSync(filePath)) {
@@ -582,6 +583,6 @@ server.on("error", (error) => {
   process.exitCode = 1;
 });
 
-server.listen(port, "127.0.0.1", () => {
+server.listen(port, host, () => {
   console.log(`读页已启动：http://localhost:${port}`);
 });
