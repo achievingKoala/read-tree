@@ -19,3 +19,11 @@ services:
         value: openrouter/auto
       - key: OPENROUTER_CHAPTER_MODEL
         value: openai/gpt-5.4
+      - key: ACTIVATION_REQUIRED
+        value: "true"
+      - key: ACTIVATION_PROJECT
+        value: read-tree
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
