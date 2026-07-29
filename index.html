@@ -1306,6 +1306,12 @@
         white-space: pre-wrap;
       }
 
+      .message.ai .bubble.completed {
+        color: #1f6f53;
+        background: #e6f6ee;
+        box-shadow: inset 0 0 0 1px #bee8d2;
+      }
+
       .message.user .bubble {
         color: #fff;
         border-radius: 16px 7px 16px 16px;
@@ -2871,6 +2877,7 @@
                 : makeId("msg"),
             role: message.role,
             text: message.text,
+            completed: message.completed === true,
           }));
         if (!messages.length) {
           return null;
@@ -3873,8 +3880,22 @@
           .join("");
         $("#chatCompletionStatus").textContent = completed ? "已完成" : "进行中";
         $("#chatCompletionStatus").classList.toggle("completed", completed);
+        const hasCompletedMessage = session.messages.some(
+          (message) => message.completed === true,
+        );
+        const fallbackCompletedIndex =
+          completed && !hasCompletedMessage
+            ? lastAiMessageIndex(session.messages)
+            : -1;
         $("#messages").innerHTML = session.messages
-          .map((message) => messageHTML(message))
+          .map((message, index) =>
+            messageHTML(
+              message,
+              false,
+              true,
+              message.completed === true || index === fallbackCompletedIndex,
+            ),
+          )
           .join("");
         $("#messages").scrollTop = $("#messages").scrollHeight;
         renderSuggestions(
@@ -3888,11 +3909,20 @@
           : "继续追问，或分享新的想法……";
         $("#sendBtn").disabled = true;
       }
-      function messageHTML(message, thinking = false, collectable = true) {
+      function messageHTML(
+        message,
+        thinking = false,
+        collectable = true,
+        completed = false,
+      ) {
         const collected = !thinking && isMessageCollected(message.id);
+        const bubbleClasses = ["bubble"];
+        if (!thinking && completed && message.role === "ai") {
+          bubbleClasses.push("completed");
+        }
         return `<div class="message ${message.role}">${
           message.role === "ai" ? '<div class="avatar">✦</div>' : ""
-        }<div class="message-body"><div class="bubble">${
+        }<div class="message-body"><div class="${bubbleClasses.join(" ")}">${
           thinking
             ? '<span class="thinking"><i></i><i></i><i></i></span>'
             : escapeHtml(message.text)
@@ -3907,6 +3937,14 @@
               }</button>`
             : ""
         }</div></div>`;
+      }
+      function lastAiMessageIndex(messages) {
+        for (let index = messages.length - 1; index >= 0; index -= 1) {
+          if (messages[index]?.role === "ai") {
+            return index;
+          }
+        }
+        return -1;
       }
       function renderSuggestions(items) {
         $("#suggestions").innerHTML = items
@@ -4001,6 +4039,7 @@
             id: makeId("msg"),
             role: "ai",
             text: data.answer.trim(),
+            completed: data.completed === true && !wasCompleted,
           });
           session.first = false;
           session.completed = session.completed || data.completed === true;
