@@ -23,6 +23,8 @@ services:
         value: "true"
       - key: ACTIVATION_PROJECT
         value: read-tree
+      - key: DEFAULT_NEW_CLIENT_QUOTA
+        value: "5"
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY

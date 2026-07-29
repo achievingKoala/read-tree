@@ -6,10 +6,16 @@ const ROOT = __dirname;
 const MAX_BODY_BYTES = 250_000;
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const QUESTIONS_PER_BATCH = 3;
-const ACTIVATION_PROJECT = process.env.ACTIVATION_PROJECT || "read-tree";
 
 loadEnv(path.join(ROOT, ".env"));
 
+const ACTIVATION_PROJECT = process.env.ACTIVATION_PROJECT || "read-tree";
+const DEFAULT_NEW_CLIENT_QUOTA = parseNonNegativeInteger(
+  process.env.DEFAULT_NEW_CLIENT_QUOTA,
+  20
+);
+const QUOTA_INSUFFICIENT_MESSAGE =
+  "AI 使用次数不足，可以联系小红书作者购买更多次数";
 const port = parsePort(process.env.PORT);
 const host = process.env.HOST || "0.0.0.0";
 
@@ -50,6 +56,27 @@ function parsePort(value) {
   return Number.isInteger(parsed) && parsed > 0 && parsed < 65536
     ? parsed
     : 3000;
+}
+
+function parseNonNegativeInteger(value, fallback) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function normalizeClientErrorMessage(message) {
+  if (typeof message !== "string") {
+    return "请求格式无效";
+  }
+
+  if (message.includes("AI 使用次数不足")) {
+    return QUOTA_INSUFFICIENT_MESSAGE;
+  }
+
+  return message;
 }
 
 function sendJson(response, status, payload) {
@@ -169,7 +196,7 @@ async function supabaseRequest(pathname, options = {}) {
           ? data
           : `Supabase returned ${upstream.status}`;
     if (data?.code === "P0001") {
-      throw new ClientError(message);
+      throw new ClientError(normalizeClientErrorMessage(message));
     }
     const error = new Error(message);
     error.publicMessage = "激活码系统暂时不可用，请稍后重试";
@@ -188,6 +215,16 @@ function normalizeQuotaRow(row) {
 }
 
 async function getClientQuota(clientId) {
+  const quota = await fetchClientQuota(clientId);
+  if (quota) {
+    return normalizeQuotaRow(quota);
+  }
+
+  const initialQuota = await grantInitialClientQuota(clientId);
+  return normalizeQuotaRow(initialQuota);
+}
+
+async function fetchClientQuota(clientId) {
   const rows = await supabaseRequest(
     `/client_quotas?client_id=eq.${encodeURIComponent(
       clientId
@@ -199,7 +236,33 @@ async function getClientQuota(clientId) {
     }
   );
 
-  return normalizeQuotaRow(Array.isArray(rows) ? rows[0] : null);
+  return Array.isArray(rows) ? rows[0] : null;
+}
+
+async function grantInitialClientQuota(clientId) {
+  if (DEFAULT_NEW_CLIENT_QUOTA <= 0) {
+    return null;
+  }
+
+  await supabaseRequest(
+    `/client_quotas?on_conflict=${encodeURIComponent(
+      "project_name,client_id"
+    )}`,
+    {
+      method: "POST",
+      prefer: "resolution=ignore-duplicates,return=minimal",
+      body: {
+        client_id: clientId,
+        project_name: ACTIVATION_PROJECT,
+        remaining_reviews: DEFAULT_NEW_CLIENT_QUOTA,
+        total_granted: DEFAULT_NEW_CLIENT_QUOTA,
+        total_used: 0,
+        updated_at: new Date().toISOString(),
+      },
+    }
+  );
+
+  return fetchClientQuota(clientId);
 }
 
 async function redeemActivationCode(clientId, code) {
@@ -216,6 +279,8 @@ async function redeemActivationCode(clientId, code) {
 }
 
 async function spendClientQuota(clientId, reason) {
+  await grantInitialClientQuota(clientId);
+
   const rows = await supabaseRequest("/rpc/spend_client_quota", {
     method: "POST",
     body: {
