@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="多图书 AI 阅读助手互动演示" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <title>读页 · AI 阅读助手</title>
+    <title>读页 · 阅读助手</title>
     <style>
       :root {
         --bg: #f5f6fa;
@@ -527,19 +527,118 @@
         overflow: hidden;
       }
 
-      .library-head {
+      .library-toolbar {
         display: flex;
         align-items: center;
         justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .drawer-open-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 31px;
+        padding: 7px 10px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        color: var(--primary);
+        background: #fff;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .drawer-open-btn:hover {
+        border-color: #bab4f5;
+        background: var(--soft);
+      }
+
+      .drawer-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+        background: rgba(22, 21, 38, 0.32);
+        opacity: 0;
+        pointer-events: none;
+        transition: 0.2s;
+      }
+
+      .drawer-backdrop.active {
+        opacity: 1;
+        pointer-events: auto;
+      }
+
+      .book-drawer {
+        position: fixed;
+        z-index: 61;
+        top: 0;
+        left: 0;
+        display: flex;
+        flex-direction: column;
+        width: min(320px, calc(100vw - 38px));
+        height: 100dvh;
+        padding: 18px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 18px 0 45px rgba(30, 28, 58, 0.2);
+        overflow: hidden;
+        transform: translateX(-105%);
+        transition: transform 0.24s ease;
+      }
+
+      .book-drawer.active {
+        transform: translateX(0);
+      }
+
+      .book-drawer-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
         margin-bottom: 14px;
       }
 
-      .library-head h2 {
+      .book-drawer-head h2 {
         margin: 0;
-        font-size: 16px;
+        font-size: 17px;
+      }
+
+      .drawer-head-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .drawer-close-btn {
+        display: grid;
+        place-items: center;
+        width: 30px;
+        height: 30px;
+        border: 0;
+        border-radius: 9px;
+        color: var(--muted);
+        background: #f5f5f8;
+        cursor: pointer;
       }
 
       .library-main {
+        display: block;
+      }
+
+      .book-drawer .library-main {
+        flex: 0 0 auto;
+      }
+
+      .book-drawer .current-cover {
+        display: block;
+      }
+
+      .book-drawer .progress-row {
+        display: flex;
+      }
+
+      .book-drawer .progress-track {
         display: block;
       }
 
@@ -750,27 +849,6 @@
         letter-spacing: 0.12em;
       }
 
-      .shelf-toggle {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 24px;
-        padding: 4px 8px;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        color: var(--primary);
-        background: #fff;
-        font-size: 10px;
-        font-weight: 800;
-        letter-spacing: 0;
-        cursor: pointer;
-      }
-
-      .shelf-toggle:hover {
-        border-color: #bab4f5;
-        background: var(--soft);
-      }
-
       .shelf {
         display: flex;
         flex: 0 1 168px;
@@ -779,6 +857,11 @@
         min-height: 0;
         overflow-y: auto;
         scrollbar-width: thin;
+      }
+
+      .book-drawer .shelf {
+        flex: 1 1 auto;
+        min-height: 160px;
       }
 
       .shelf-empty {
@@ -1990,6 +2073,14 @@
           scrollbar-width: none;
         }
 
+        .book-drawer .shelf {
+          flex: 1 1 auto;
+          flex-direction: column;
+          overflow-x: hidden;
+          overflow-y: auto;
+          scrollbar-width: thin;
+        }
+
         .sidebar-questions {
           flex: none;
           max-height: 340px;
@@ -2009,6 +2100,10 @@
 
         .shelf-item {
           flex: 0 0 165px;
+        }
+
+        .book-drawer .shelf-item {
+          flex: 0 0 auto;
         }
       }
 
@@ -2059,10 +2154,6 @@
         .library {
           padding: 14px;
           border-radius: 18px;
-        }
-
-        .library-main {
-          display: block;
         }
 
         .current-cover {
@@ -2176,9 +2267,9 @@
           >读页
         </div>
         <div class="top-actions">
-          <div class="status">
+          <!-- <div class="status">
             <span class="status-dot"></span><span>AI 阅读伙伴在线</span>
-          </div>
+          </div> -->
           <form class="quota-form" id="quotaForm">
             <span class="quota-count" id="quotaCount">额度 --</span>
             <input
@@ -2199,11 +2290,20 @@
       </header>
       <div class="layout" id="readingView">
         <aside class="panel library">
-          <div class="library-head">
-            <h2>我的书架</h2>
+          <div class="library-toolbar">
+            <button
+              class="drawer-open-btn"
+              id="openBookDrawer"
+              type="button"
+              aria-controls="bookDrawer"
+              aria-expanded="false"
+            >
+              <span>书架</span>
+            </button>
             <button
               class="add-btn"
               id="openModal"
+              data-open-book-modal
               title="添加图书"
               aria-label="添加图书"
             >
@@ -2217,6 +2317,46 @@
             <div class="record-progress"><i id="todayProgress"></i></div>
             <div class="sidebar-completed-row">
               <span>完成问答</span><strong id="todayCompletedCount">0</strong>
+            </div>
+          </div>
+          <div class="sidebar-questions hidden" id="questionView">
+            <div class="sidebar-questions-head">
+              <h3>全部问题</h3>
+              <span class="intro-badge" id="badge"></span>
+            </div>
+            <div class="question-sort" id="questionSort">
+              <button type="button" data-question-sort="batch">按批次</button>
+              <button type="button" data-question-sort="chapter">按章节</button>
+            </div>
+            <div class="questions" id="questions"></div>
+          </div>
+        </aside>
+        <div class="drawer-backdrop" id="bookDrawerBackdrop"></div>
+        <aside
+          class="book-drawer"
+          id="bookDrawer"
+          aria-label="书架"
+          aria-hidden="true"
+        >
+          <div class="book-drawer-head">
+            <h2>我的书架</h2>
+            <div class="drawer-head-actions">
+              <button
+                class="add-btn"
+                data-open-book-modal
+                title="添加图书"
+                aria-label="添加图书"
+              >
+                ＋
+              </button>
+              <button
+                class="drawer-close-btn"
+                id="closeBookDrawer"
+                type="button"
+                aria-label="关闭书架"
+              >
+                ×
+              </button>
             </div>
           </div>
           <div class="library-main" id="libraryMain">
@@ -2246,28 +2386,8 @@
           </div>
           <div class="shelf-label">
             <span>书架中的图书</span>
-            <button
-              class="shelf-toggle"
-              id="shelfToggle"
-              type="button"
-              aria-controls="libraryMain shelf"
-              aria-expanded="true"
-            >
-              隐藏
-            </button>
           </div>
           <div class="shelf" id="shelf"></div>
-          <div class="sidebar-questions hidden" id="questionView">
-            <div class="sidebar-questions-head">
-              <h3>全部问题</h3>
-              <span class="intro-badge" id="badge"></span>
-            </div>
-            <div class="question-sort" id="questionSort">
-              <button type="button" data-question-sort="batch">按批次</button>
-              <button type="button" data-question-sort="chapter">按章节</button>
-            </div>
-            <div class="questions" id="questions"></div>
-          </div>
         </aside>
         <section class="panel workspace" id="workspace" aria-live="polite">
           <header class="workspace-header">
@@ -2587,7 +2707,6 @@
         NOTEBOOK_STORAGE = "readpage_notebook_v1",
         QUESTION_SORT_STORAGE = "readpage_question_sort_v1",
         ALL_QUESTIONS_SORT_KEY = "__all_questions__",
-        SHELF_COLLAPSED_STORAGE = "readpage_shelf_collapsed_v1",
         CHAPTER_NEW_BOOK_VALUE = "__new_book__",
         CLIENT_ID_STORAGE = "readpage_client_id_v1",
         followUps = [
@@ -2606,7 +2725,6 @@
         notes: [],
         quota: null,
         quotaEnabled: null,
-        shelfCollapsed: false,
         busy: false,
         generating: false,
       };
@@ -2834,29 +2952,24 @@
       function saveShelf() {
         localStorage.setItem(STORAGE, JSON.stringify(state.books));
       }
-      function loadShelfCollapsed() {
-        state.shelfCollapsed =
-          localStorage.getItem(SHELF_COLLAPSED_STORAGE) === "true";
+      function openBookDrawer() {
+        $("#bookDrawer").classList.add("active");
+        $("#bookDrawerBackdrop").classList.add("active");
+        $("#bookDrawer").setAttribute("aria-hidden", "false");
+        $("#openBookDrawer").setAttribute("aria-expanded", "true");
       }
-      function saveShelfCollapsed() {
-        localStorage.setItem(
-          SHELF_COLLAPSED_STORAGE,
-          String(state.shelfCollapsed),
-        );
+      function closeBookDrawer() {
+        $("#bookDrawer").classList.remove("active");
+        $("#bookDrawerBackdrop").classList.remove("active");
+        $("#bookDrawer").setAttribute("aria-hidden", "true");
+        $("#openBookDrawer").setAttribute("aria-expanded", "false");
       }
-      function renderShelfVisibility() {
-        $("#libraryMain").classList.toggle("hidden", state.shelfCollapsed);
-        $("#shelf").classList.toggle("hidden", state.shelfCollapsed);
-        $("#shelfToggle").textContent = state.shelfCollapsed ? "显示" : "隐藏";
-        $("#shelfToggle").setAttribute(
-          "aria-expanded",
-          String(!state.shelfCollapsed),
-        );
-      }
-      function toggleShelfVisibility() {
-        state.shelfCollapsed = !state.shelfCollapsed;
-        saveShelfCollapsed();
-        renderShelfVisibility();
+      function openBookModal() {
+        closeBookDrawer();
+        $("#bookForm").reset();
+        clearBookChapterPreview();
+        $("#bookModal").showModal();
+        setTimeout(() => $("#customTitle").focus(), 60);
       }
       function activityTimeValue(item) {
         const time = Date.parse(item?.updatedAt || "");
@@ -3519,7 +3632,6 @@
         renderShelf();
       }
       function renderShelf() {
-        renderShelfVisibility();
         if (!state.books.length) {
           $("#shelf").innerHTML =
             '<div class="shelf-empty">还没有图书。点击上方 + 添加一本。</div>';
@@ -4191,6 +4303,7 @@
       }
       function switchBook(id) {
         state.activeBookId = id;
+        closeBookDrawer();
         render();
       }
       function parseBatchNumber(label) {
@@ -4862,7 +4975,14 @@
         const b = e.target.closest("[data-book]");
         if (b) switchBook(b.dataset.book);
       });
-      $("#shelfToggle").addEventListener("click", toggleShelfVisibility);
+      $("#openBookDrawer").addEventListener("click", openBookDrawer);
+      $("#closeBookDrawer").addEventListener("click", closeBookDrawer);
+      $("#bookDrawerBackdrop").addEventListener("click", closeBookDrawer);
+      document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+          closeBookDrawer();
+        }
+      });
       $("#questions").addEventListener("click", (e) => {
         const deleteButton = e.target.closest("[data-delete-question]");
         if (deleteButton) {
@@ -4944,11 +5064,8 @@
         const b = e.target.closest("[data-suggestion]");
         if (b) send(b.dataset.suggestion);
       });
-      $("#openModal").addEventListener("click", () => {
-        $("#bookForm").reset();
-        clearBookChapterPreview();
-        $("#bookModal").showModal();
-        setTimeout(() => $("#customTitle").focus(), 60);
+      document.querySelectorAll("[data-open-book-modal]").forEach((button) => {
+        button.addEventListener("click", openBookModal);
       });
       $("#closeModal").addEventListener("click", () => $("#bookModal").close());
       $("#bookModal").addEventListener("click", (e) => {
@@ -5067,7 +5184,6 @@
         );
       });
       loadShelf();
-      loadShelfCollapsed();
       loadQuestionSorts();
       loadActivity();
       loadChats();
