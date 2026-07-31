@@ -1612,6 +1612,7 @@
       }
 
       .field input,
+      .field select,
       .field textarea {
         width: 100%;
         padding: 11px 12px;
@@ -1622,6 +1623,7 @@
       }
 
       .field input:focus,
+      .field select:focus,
       .field textarea:focus {
         border-color: #aaa4f3;
       }
@@ -1674,6 +1676,12 @@
       .book-chapter-preview li span {
         color: var(--ink);
         font-weight: 700;
+      }
+
+      .chapter-book-fields {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
       }
 
       .toast {
@@ -2281,7 +2289,7 @@
                 <span class="empty-icon">⌛</span>
                 <h3>等待第一批问题</h3>
                 <p>
-                  图书已在书架中。点击下方按钮，选择章节后再生成第一批值得讨论的问题。
+                  可以直接生成问题。先在弹窗里选择已有图书，或新建一本书后再选择章节。
                 </p>
                 <button class="chapter-btn" id="emptyChapter">
                   <span>✦</span><span>生成第一批问题</span>
@@ -2466,6 +2474,30 @@
         </button>
       </div>
       <form class="form modal-body" id="chapterForm">
+        <div class="field">
+          <label for="chapterBookSelect">生成给哪本书</label>
+          <select class="chapter-select" id="chapterBookSelect"></select>
+        </div>
+        <div class="chapter-book-fields hidden" id="chapterDraftBookFields">
+          <div class="field">
+            <label for="chapterDraftTitle">书名</label>
+            <input
+              id="chapterDraftTitle"
+              maxlength="80"
+              placeholder="输入书名后生成问题"
+              autocomplete="off"
+            />
+          </div>
+          <div class="field">
+            <label for="chapterDraftAuthor">作者（可选）</label>
+            <input
+              id="chapterDraftAuthor"
+              maxlength="80"
+              placeholder="作者姓名"
+              autocomplete="off"
+            />
+          </div>
+        </div>
         <p class="generation-note">
           章节目录和简介由 AI
           生成，可能因版本不同存在偏差。请选择要出题的章节，也可以粘贴正文或补充摘要。
@@ -2556,6 +2588,7 @@
         QUESTION_SORT_STORAGE = "readpage_question_sort_v1",
         ALL_QUESTIONS_SORT_KEY = "__all_questions__",
         SHELF_COLLAPSED_STORAGE = "readpage_shelf_collapsed_v1",
+        CHAPTER_NEW_BOOK_VALUE = "__new_book__",
         CLIENT_ID_STORAGE = "readpage_client_id_v1",
         followUps = [
           "这和现实生活有什么关系？",
@@ -2580,7 +2613,8 @@
       const activity = { dailyGoal: 5, pendingGoal: null, days: {} };
       let currentPage = "reading",
         visibleHistory = 30,
-        pendingBookChapters = null;
+        pendingBookChapters = null,
+        chapterDraftBook = null;
       const $ = (s) => document.querySelector(s),
         clone = (o) => JSON.parse(JSON.stringify(o));
       function makeId(prefix) {
@@ -3477,8 +3511,9 @@
         $("#chatView .chat-topic").classList.add("hidden");
         $("#workspace").classList.remove("chatting");
         $("#backBtn").classList.add("hidden");
-        $("#openChapter").disabled = true;
-        $("#emptyChapter").disabled = true;
+        updateGenerationButtonLabels();
+        $("#openChapter").disabled = state.generating;
+        $("#emptyChapter").disabled = state.generating;
         $("#openBookEditModal").disabled = true;
         $("#deleteBookBtn").disabled = true;
         renderShelf();
@@ -3798,8 +3833,12 @@
         toast("图书已删除");
       }
       function renderView() {
-        const b = book(),
-          qid = state.activeQuestions[b.id],
+        const b = book();
+        if (!b) {
+          renderEmptyShelf();
+          return;
+        }
+        const qid = state.activeQuestions[b.id],
           session = activeSession(b.id, qid),
           hasAnyQuestions = allQuestionItems().length > 0,
           chatting = !!state.bookViews[b.id] && !!qid && !!session;
@@ -4193,6 +4232,73 @@
         };
         return b;
       }
+      function isPersistedBook(bookItem) {
+        return state.books.some((item) => item.id === bookItem?.id);
+      }
+      function ensureChapterDraftBook() {
+        if (!chapterDraftBook) {
+          chapterDraftBook = createCustomBook("", "");
+        }
+        chapterDraftBook.title = $("#chapterDraftTitle").value.trim();
+        chapterDraftBook.author = $("#chapterDraftAuthor").value.trim();
+        return chapterDraftBook;
+      }
+      function renderChapterBookSelect(selectedId = state.activeBookId) {
+        const hasSelectedBook = state.books.some((item) => item.id === selectedId),
+          value = hasSelectedBook ? selectedId : CHAPTER_NEW_BOOK_VALUE,
+          bookOptions = sortedBooksByStudy()
+            .map(
+              (item) =>
+                `<option value="${escapeHtml(item.id)}">${escapeHtml(
+                  item.title,
+                )}</option>`,
+            )
+            .join("");
+        $("#chapterBookSelect").innerHTML = `${bookOptions}<option value="${CHAPTER_NEW_BOOK_VALUE}">新建图书</option>`;
+        $("#chapterBookSelect").value = value;
+        renderChapterBookFields();
+      }
+      function renderChapterBookFields() {
+        const isNewBook =
+          $("#chapterBookSelect").value === CHAPTER_NEW_BOOK_VALUE;
+        $("#chapterDraftBookFields").classList.toggle("hidden", !isNewBook);
+        $("#chapterDraftTitle").required = isNewBook;
+        if (isNewBook) {
+          ensureChapterDraftBook();
+        }
+      }
+      function findDuplicateBookTitle(title) {
+        return state.books.find(
+          (item) => item.title.toLowerCase() === title.toLowerCase(),
+        );
+      }
+      function chapterTargetBook(options = {}) {
+        const requireTitle = options.requireTitle === true,
+          selectedBookId = $("#chapterBookSelect").value;
+        if (selectedBookId !== CHAPTER_NEW_BOOK_VALUE) {
+          return state.books.find((item) => item.id === selectedBookId) || null;
+        }
+        const draft = ensureChapterDraftBook();
+        if (requireTitle && !draft.title) {
+          $("#chapterDraftTitle").reportValidity();
+          return null;
+        }
+        if (requireTitle && findDuplicateBookTitle(draft.title)) {
+          toast("同名图书已经在书架中了");
+          return null;
+        }
+        return draft;
+      }
+      function renderChapterModalTarget() {
+        renderChapterBookFields();
+        closeChapterEditor();
+        const b = chapterTargetBook();
+        if (b?.chapters?.length) {
+          renderChapterOptions(b);
+          return;
+        }
+        renderEmptyChapterOptions();
+      }
       function setGenerationBusy(active) {
         state.generating = active;
         $("#openChapter").disabled = active;
@@ -4515,8 +4621,11 @@
         });
       }
       function openChapterEditor(mode) {
-        const b = book(),
-          selectedNumber = readChapterNumber($("#chapterSelect").value),
+        const b = chapterTargetBook();
+        if (!b) {
+          return;
+        }
+        const selectedNumber = readChapterNumber($("#chapterSelect").value),
           selectedChapter =
             mode === "edit"
               ? b.chapters.find((chapter) => chapter.number === selectedNumber)
@@ -4546,10 +4655,13 @@
         $("#chapterTitle").focus();
       }
       function saveChapterEditor() {
-        const b = book(),
+        const b = chapterTargetBook(),
           mode = $("#chapterEditor").dataset.mode,
           number = Number($("#chapterNumber").value),
           title = $("#chapterTitle").value.trim();
+        if (!b) {
+          return;
+        }
         if (!isChapterNumber(number)) {
           toast("章节编号必须是 0–9999 的整数");
           return;
@@ -4599,14 +4711,21 @@
         }
         b.chapters.sort((a, c) => a.number - c.number);
         b.currentChapter = number;
-        saveShelf();
+        if (isPersistedBook(b)) {
+          saveShelf();
+        }
         renderChapterOptions(b);
         closeChapterEditor();
-        render();
+        if (isPersistedBook(b)) {
+          render();
+        }
         toast(mode === "add" ? "章节已插入" : "章节名称已更新");
       }
       async function fetchChapterCatalog(refresh = false) {
-        const b = book();
+        const b = chapterTargetBook({ requireTitle: true });
+        if (!b) {
+          return;
+        }
         $("#chapterSelect").innerHTML =
           "<option>AI 正在获取章节目录……</option>";
         $("#chapterSelect").disabled = true;
@@ -4639,9 +4758,13 @@
           ) {
             b.currentChapter = readChapterNumber(b.chapters[0]?.number);
           }
-          saveShelf();
+          if (isPersistedBook(b)) {
+            saveShelf();
+          }
           renderChapterOptions(b);
-          render();
+          if (isPersistedBook(b)) {
+            render();
+          }
           toast(refresh ? "AI 目录和章节简介已更新" : "章节目录已获取");
         } catch (error) {
           if (b.chapters.length) {
@@ -4656,20 +4779,20 @@
         }
       }
       async function openChapterModal() {
-        const b = book();
+        chapterDraftBook = null;
         $("#generating").classList.remove("active");
         closeChapterEditor();
+        renderChapterBookSelect(state.activeBookId);
         $("#chapterModal").showModal();
-        if (b.chapters?.length) {
-          renderChapterOptions(b);
-          return;
-        }
-        renderEmptyChapterOptions();
+        renderChapterModalTarget();
       }
       async function submitChapter(e) {
         e.preventDefault();
-        const b = book(),
-          chapter = Number($("#chapterSelect").value),
+        const b = chapterTargetBook({ requireTitle: true });
+        if (!b) {
+          return;
+        }
+        const chapter = Number($("#chapterSelect").value),
           context = $("#chapterContext").value.trim(),
           aiSummary = $("#chapterContext").dataset.aiSummary || "",
           contextSource = !context
@@ -4698,6 +4821,13 @@
             throw new Error("AI 返回的问题格式无效，请重试");
           }
           addQuestionsToBatch(b, chapterInfo, data.questions, nextBatchNumber(b));
+          if (!isPersistedBook(b)) {
+            state.books.push(b);
+            state.activeBookId = b.id;
+            chapterDraftBook = null;
+          } else {
+            state.activeBookId = b.id;
+          }
           saveShelf();
           $("#chapterModal").close();
           state.bookViews[b.id] = false;
@@ -4759,6 +4889,17 @@
           return;
         }
         setQuestionSortMode(ALL_QUESTIONS_SORT_KEY, button.dataset.questionSort);
+      });
+      $("#chapterBookSelect").addEventListener("change", renderChapterModalTarget);
+      $("#chapterDraftTitle").addEventListener("input", () => {
+        if (chapterDraftBook) {
+          chapterDraftBook.title = $("#chapterDraftTitle").value.trim();
+        }
+      });
+      $("#chapterDraftAuthor").addEventListener("input", () => {
+        if (chapterDraftBook) {
+          chapterDraftBook.author = $("#chapterDraftAuthor").value.trim();
+        }
       });
       $("#messages").addEventListener("click", (e) => {
         const button = e.target.closest("[data-collect-message]");
