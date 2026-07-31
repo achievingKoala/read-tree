@@ -1161,6 +1161,63 @@
         background: var(--soft);
       }
 
+      .question-answer-toggle {
+        position: absolute;
+        z-index: 1;
+        left: 12px;
+        bottom: 8px;
+        min-height: 26px;
+        padding: 5px 8px;
+        border: 1px solid #dcd8ff;
+        border-radius: 8px;
+        color: var(--primary);
+        background: #fff;
+        font-size: 11px;
+        font-weight: 800;
+        cursor: pointer;
+        opacity: 0;
+        transition: 0.2s;
+      }
+
+      .question-card-wrap:hover .question-answer-toggle,
+      .question-answer-toggle:focus-visible,
+      .question-answer-toggle.active {
+        opacity: 1;
+      }
+
+      .question-answer-toggle:hover,
+      .question-answer-toggle.active {
+        background: var(--soft);
+      }
+
+      .question-answer-toggle + .question-repeat {
+        left: 88px;
+      }
+
+      .question-answer {
+        display: none;
+        margin-top: 6px;
+        padding: 10px 11px;
+        border: 1px solid #dedaf8;
+        border-radius: 10px;
+        color: #42425f;
+        background: #fbfbff;
+        font-size: 11px;
+        line-height: 1.65;
+      }
+
+      .question-answer.active {
+        display: block;
+      }
+
+      .question-answer span {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--primary-dark);
+        font-size: 10px;
+        font-weight: 800;
+      }
+
       .question-card.active {
         border-color: var(--primary);
         background: var(--soft);
@@ -2753,6 +2810,7 @@
         activeBookId: null,
         activeQuestions: {},
         activeAttempts: {},
+        answerReveals: {},
         bookViews: {},
         questionSorts: {},
         chats: {},
@@ -3057,6 +3115,19 @@
           QUESTION_SORT_STORAGE,
           JSON.stringify(state.questionSorts),
         );
+      }
+      function questionAnswerKey(bookId, questionId) {
+        return `${bookId}::${questionId}`;
+      }
+      function isQuestionAnswerVisible(bookId, questionId) {
+        return (
+          state.answerReveals[questionAnswerKey(bookId, questionId)] === true
+        );
+      }
+      function toggleQuestionAnswer(bookId, questionId) {
+        const key = questionAnswerKey(bookId, questionId);
+        state.answerReveals[key] = state.answerReveals[key] !== true;
+        renderQuestions();
       }
       function attemptKey(bookId, questionId, attemptId) {
         return `${bookId}::${questionId}::${attemptId}`;
@@ -3815,7 +3886,9 @@
                       q.tag,
                     ]
                       .filter(Boolean)
-                      .join(" · ");
+                      .join(" · "),
+                    answer = typeof q.answer === "string" ? q.answer.trim() : "",
+                    answerVisible = isQuestionAnswerVisible(bookItem.id, q.id);
                   return `<div class="question-card-wrap"><button class="question-card ${
                     state.activeBookId === bookItem.id &&
                     state.activeQuestions[bookItem.id] === q.id
@@ -3836,7 +3909,13 @@
                       : answeredCount
                         ? `<span class="saved-mark">● 已答 ${answeredCount} 次</span>`
                         : ""
-                  }</button>${
+                  }</button>${answer ? `<button class="question-answer-toggle ${
+                    answerVisible ? "active" : ""
+                  }" type="button" data-answer-question="${escapeHtml(
+                    q.id,
+                  )}" data-book="${escapeHtml(bookItem.id)}">${
+                    answerVisible ? "收起答案" : "查看答案"
+                  }</button>` : ""}${
                     answeredCount
                       ? `<button class="question-repeat" type="button" data-repeat-question="${escapeHtml(
                           q.id,
@@ -3848,7 +3927,13 @@
                     bookItem.id,
                   )}" aria-label="删除问题：${escapeHtml(
                     q.text,
-                  )}" title="删除问题">×</button></div>`;
+                  )}" title="删除问题">×</button>${
+                    answer
+                      ? `<div class="question-answer ${
+                          answerVisible ? "active" : ""
+                        }"><span>参考答案</span>${escapeHtml(answer)}</div>`
+                      : ""
+                  }</div>`;
                 })
                 .join("")}`,
           )
@@ -4592,6 +4677,7 @@
             generationSource: "ai",
             tag: question.tag,
             text: question.text,
+            answer: typeof question.answer === "string" ? question.answer : "",
           }));
         b.questions.push(...questions);
         b.currentChapter = chapterInfo.number;
@@ -5031,6 +5117,14 @@
           repeatQuestion(
             repeatButton.dataset.repeatQuestion,
             repeatButton.dataset.book,
+          );
+          return;
+        }
+        const answerButton = e.target.closest("[data-answer-question]");
+        if (answerButton) {
+          toggleQuestionAnswer(
+            answerButton.dataset.book,
+            answerButton.dataset.answerQuestion,
           );
           return;
         }
