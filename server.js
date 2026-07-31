@@ -500,6 +500,7 @@ function parseQuestions(content, expectedCount = QUESTIONS_PER_BATCH) {
   return questions.map((question) => ({
     tag: requiredString(question?.tag, "问题标签", 20),
     text: requiredString(question?.text, "问题", 180),
+    answer: requiredString(question?.answer, "参考答案", 600),
   }));
 }
 
@@ -665,7 +666,7 @@ async function handleQuestions(request, response) {
     grounding = `以下是未经用户核对的 AI 章节简介，可能因版本差异或模型幻觉而错误：\n${context}\n只能把它当作待核对线索。问题必须使用“请在本章中寻找”“请核对原文如何写”等审慎表达，不得把简介中的人物、事件或观点直接宣称为事实。`;
   } else {
     grounding =
-      "没有可靠的章节正文或摘要。只能生成引导用户回到本章查找证据的开放式问题，不得声称任何具体情节一定存在。";
+      "没有可靠的章节正文或摘要。问题要引导用户回到本章查找证据；参考答案可以基于书名、作者、章节标题和常识给出概括性答案，但不得假装引用了原文逐字表述。";
   }
   const { result, quota } = await withQuota(
     clientId,
@@ -677,13 +678,15 @@ async function handleQuestions(request, response) {
           content: `你是中文阅读教练。
 
 任务：
-为指定章节生成 ${questionCount} 道阅读理解题，引导用户回到原文找依据。
+为指定章节生成 ${questionCount} 道阅读理解题，并为每道题提供一个简短参考答案。
 
 要求：
 1. tag 依次为：信息定位、内容概括、证据判断。
 2. 每题只问一个任务，答案应能用一句话、两点、一个例子或一处证据回答。
 3. 不要问“你怎么看”“有什么启发”，不要剧透，不要编造原文没有的信息。
-4. 没有可靠原文时，只生成“请在本章中寻找/核对……”这类寻读题。
+4. 没有可靠原文时，问题可以用“请在本章中寻找/核对……”这类寻读问法，但 answer 仍必须给出可直接看的参考答案。
+5. answer 必须简短，直接回答问题，不要写“请核对”“请寻找”“回到原文查看”这类任务提示。
+6. 如果没有正文，只能给概括性参考答案；可以写“参考答案：……”，但不要声称这是原文原句。
 
 坏例子：
 - 剧透：“作者是否指出了渐进主义、规避风险、自满等趋势？”
@@ -698,9 +701,19 @@ async function handleQuestions(request, response) {
 - “作者回顾互联网泡沫时提到了哪些公司案例或历史事件？”
 - “请整理作者总结的两项核心能力。”
 
+好答案：
+- “自控力并不是意志力硬扛，而是通过环境设计减少诱惑出现的机会。”
+- “核心方法包括让坏习惯的线索不明显、增加行动阻力，并提前设计替代行为。”
+- “证据通常来自对高自控力人群的研究：他们不是更会忍耐，而是更少进入需要忍耐的情境。”
+
+坏答案：
+- “请核对正文中定义自控力的句子。”
+- “请根据本章小结梳理具体策略。”
+- “请寻找相关心理学实验或调查数据。”
+
 输出严格 JSON，不要 Markdown：
-{"questions":[{"tag":"短标签","text":"问题"}]}
-每个问题对象只能包含 tag 和 text。`,
+{"questions":[{"tag":"短标签","text":"问题","answer":"简短参考答案"}]}
+每个问题对象只能包含 tag、text 和 answer。`,
         },
         {
           role: "user",
