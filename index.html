@@ -74,6 +74,7 @@
         flex: 0 0 auto;
         align-items: center;
         justify-content: space-between;
+        gap: 16px;
         margin-bottom: 24px;
       }
 
@@ -119,6 +120,7 @@
         display: flex;
         align-items: center;
         gap: 14px;
+        min-width: 0;
       }
 
       .records-nav {
@@ -378,9 +380,16 @@
         background: linear-gradient(90deg, var(--primary), #9189f8);
       }
 
-      .sidebar-goal {
-        margin: 12px 0 4px;
-        padding: 9px 10px;
+      .topbar-goal {
+        position: relative;
+        display: grid;
+        flex: 0 0 214px;
+        grid-template-columns: 1fr 1fr;
+        align-items: center;
+        gap: 0 12px;
+        min-height: 42px;
+        padding: 5px 10px 9px;
+        overflow: hidden;
         border: 1px solid var(--line);
         border-radius: 11px;
         background: #fbfbfe;
@@ -389,11 +398,12 @@
       .sidebar-goal-row {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 8px;
+        justify-content: center;
+        gap: 6px;
         color: var(--muted);
         font-size: 11px;
         font-weight: 700;
+        white-space: nowrap;
       }
 
       .sidebar-goal-row strong {
@@ -401,25 +411,31 @@
         font-size: 13px;
       }
 
-      .sidebar-goal .record-progress {
+      .topbar-goal .record-progress {
+        position: absolute;
+        right: 10px;
+        bottom: 5px;
+        left: 10px;
         height: 4px;
-        margin-top: 7px;
+        margin-top: 0;
       }
 
-      .sidebar-completed-row {
+      .goal-completed-row {
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        margin-top: 8px;
-        padding-top: 7px;
-        border-top: 1px solid var(--line);
+        justify-content: center;
+        gap: 6px;
+        margin-top: 0;
+        padding-top: 0;
+        border-top: 0;
+        border-left: 1px solid var(--line);
         color: var(--muted);
         font-size: 11px;
         font-weight: 700;
+        white-space: nowrap;
       }
 
-      .sidebar-completed-row strong {
+      .goal-completed-row strong {
         color: var(--primary-dark);
         font-size: 13px;
       }
@@ -2003,6 +2019,18 @@
           overflow: visible;
         }
 
+        .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .top-actions {
+          flex-wrap: wrap;
+          justify-content: flex-start;
+          width: 100%;
+        }
+
         .notebook-toolbar {
           align-items: stretch;
           flex-direction: column;
@@ -2125,6 +2153,12 @@
           flex-wrap: wrap;
           justify-content: flex-end;
           gap: 8px;
+        }
+
+        .topbar-goal {
+          flex: 1 1 100%;
+          order: 3;
+          width: 100%;
         }
 
         .quota-form {
@@ -2270,6 +2304,15 @@
           <!-- <div class="status">
             <span class="status-dot"></span><span>AI 阅读伙伴在线</span>
           </div> -->
+          <div class="topbar-goal">
+            <div class="sidebar-goal-row">
+              <span>今日目标</span><strong id="todayCount">0 / 5</strong>
+            </div>
+            <div class="record-progress"><i id="todayProgress"></i></div>
+            <div class="goal-completed-row">
+              <span>完成问答</span><strong id="todayCompletedCount">0</strong>
+            </div>
+          </div>
           <form class="quota-form" id="quotaForm">
             <span class="quota-count" id="quotaCount">额度 --</span>
             <input
@@ -2309,15 +2352,6 @@
             >
               ＋
             </button>
-          </div>
-          <div class="sidebar-goal">
-            <div class="sidebar-goal-row">
-              <span>今日目标</span><strong id="todayCount">0 / 5</strong>
-            </div>
-            <div class="record-progress"><i id="todayProgress"></i></div>
-            <div class="sidebar-completed-row">
-              <span>完成问答</span><strong id="todayCompletedCount">0</strong>
-            </div>
           </div>
           <div class="sidebar-questions hidden" id="questionView">
             <div class="sidebar-questions-head">
