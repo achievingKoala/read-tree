@@ -1914,6 +1914,33 @@
         margin-top: 0;
       }
 
+      .question-batch-group {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin: 0 0 2px;
+        color: var(--primary-dark);
+        font-size: 10px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+      }
+
+      .question-batch-section {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin: 8px 0 4px;
+        padding: 11px 10px 10px;
+        border: 2px solid #bfb9ff;
+        border-radius: 12px;
+        background: #f7f6ff;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+      }
+
+      .question-batch-section .question-card {
+        background: #fff;
+      }
+
       .chapter-select {
         width: 100%;
         padding: 12px;
@@ -2410,6 +2437,14 @@
               <h3>全部问题</h3>
               <span class="intro-badge" id="badge"></span>
             </div>
+            <div class="question-sort" id="questionArrangement">
+              <button type="button" data-question-arrangement="recent">
+                最近批次
+              </button>
+              <button type="button" data-question-arrangement="book">
+                按书籍
+              </button>
+            </div>
             <div class="questions" id="questions"></div>
           </div>
         </aside>
@@ -2787,6 +2822,7 @@
         ACTIVITY_STORAGE = "readpage_activity_v1",
         CHATS_STORAGE = "readpage_chats_v1",
         NOTEBOOK_STORAGE = "readpage_notebook_v1",
+        QUESTION_ARRANGEMENT_STORAGE = "readpage_question_arrangement_v1",
         CHAPTER_NEW_BOOK_VALUE = "__new_book__",
         CLIENT_ID_STORAGE = "readpage_client_id_v1",
         followUps = [
@@ -2801,6 +2837,7 @@
         activeAttempts: {},
         answerReveals: {},
         bookViews: {},
+        questionArrangement: "recent",
         chats: {},
         notes: [],
         quota: null,
@@ -3735,6 +3772,39 @@
           question.batchLabel || ""
         }`;
       }
+      function loadQuestionArrangement() {
+        const savedArrangement = localStorage.getItem(
+          QUESTION_ARRANGEMENT_STORAGE,
+        );
+        state.questionArrangement = ["recent", "book"].includes(savedArrangement)
+          ? savedArrangement
+          : "recent";
+      }
+      function saveQuestionArrangement() {
+        localStorage.setItem(
+          QUESTION_ARRANGEMENT_STORAGE,
+          state.questionArrangement,
+        );
+      }
+      function setQuestionArrangement(arrangement) {
+        if (!["recent", "book"].includes(arrangement)) {
+          return;
+        }
+        state.questionArrangement = arrangement;
+        saveQuestionArrangement();
+        renderQuestions();
+      }
+      function renderQuestionArrangementControls(hasQuestions) {
+        $("#questionArrangement").classList.toggle("hidden", !hasQuestions);
+        document
+          .querySelectorAll("[data-question-arrangement]")
+          .forEach((button) => {
+            const active =
+              button.dataset.questionArrangement === state.questionArrangement;
+            button.classList.toggle("active", active);
+            button.setAttribute("aria-pressed", String(active));
+          });
+      }
       function allQuestionItems() {
         return state.books.flatMap((bookItem) =>
           bookItem.questions.map((question) => ({
@@ -3806,7 +3876,7 @@
             : ""
         }</div>`;
       }
-      function renderQuestions() {
+      function renderRecentQuestionGroups() {
         const batches = [];
         allQuestionItems()
           .map((item, originalOrder) => ({
@@ -3865,26 +3935,135 @@
           }
           return a.originalOrder - c.originalOrder;
         });
-        const questionCount = batches.reduce(
-          (count, batch) => count + batch.items.length,
-          0,
-        );
-        $("#badge").textContent = `✦ 最近批次 · ${questionCount} 个问题`;
+        return batches;
+      }
+      function renderBookBatchGroups(bookItem) {
+        const batches = [];
+        bookItem.questions
+          .map((question, originalOrder) => ({
+            bookItem,
+            question,
+            originalOrder,
+            activityTime: questionActivityTimeValue(bookItem.id, question),
+          }))
+          .forEach((item) => {
+            const q = item.question,
+              batchLabel = q.batchLabel || "第 1 批 · 之前内容",
+              displayBatchLabel = batchLabel
+                .replace(/\s*·\s*自动生成/g, "")
+                .trim(),
+              chapterLabel = q.chapterLabel || "全书讨论",
+              key = questionBatchKey(bookItem, q);
+            let batch = batches.find((current) => current.key === key);
+            if (!batch) {
+              batch = {
+                key,
+                label: [chapterLabel, displayBatchLabel]
+                  .filter(Boolean)
+                  .join(" · "),
+                createdAt: q.batchCreatedAt || q.updatedAt || "",
+                activityTime: item.activityTime,
+                originalOrder: item.originalOrder,
+                items: [],
+              };
+              batches.push(batch);
+            }
+            batch.activityTime = Math.max(batch.activityTime, item.activityTime);
+            if (!batch.createdAt && (q.batchCreatedAt || q.updatedAt)) {
+              batch.createdAt = q.batchCreatedAt || q.updatedAt;
+            }
+            batch.originalOrder = Math.min(batch.originalOrder, item.originalOrder);
+            batch.items.push(item);
+          });
+        batches.forEach((batch) => {
+          batch.items.sort((a, c) => a.originalOrder - c.originalOrder);
+        });
+        batches.sort((a, c) => {
+          if (a.activityTime !== c.activityTime) {
+            return c.activityTime - a.activityTime;
+          }
+          const createdDiff =
+            activityTimeValue({ updatedAt: c.createdAt }) -
+            activityTimeValue({ updatedAt: a.createdAt });
+          if (createdDiff) {
+            return createdDiff;
+          }
+          return a.originalOrder - c.originalOrder;
+        });
+        return batches;
+      }
+      function renderBookQuestionGroups() {
+        return sortedBooksByStudy()
+          .map((bookItem, bookOrder) => {
+            const batches = renderBookBatchGroups(bookItem);
+            return {
+              key: bookItem.id,
+              label: `《${bookItem.title}》`,
+              createdAt: "",
+              activityTime: bookStudyTimeValue(bookItem),
+              originalOrder: bookOrder,
+              batches,
+              items: batches.flatMap((batch) => batch.items),
+            };
+          })
+          .filter((group) => group.items.length);
+      }
+      function renderQuestions() {
+        const groups =
+            state.questionArrangement === "book"
+              ? renderBookQuestionGroups()
+              : renderRecentQuestionGroups(),
+          questionCount = groups.reduce(
+            (count, group) => count + group.items.length,
+            0,
+          );
+        renderQuestionArrangementControls(questionCount > 0);
+        $("#badge").textContent =
+          state.questionArrangement === "book"
+            ? `✦ 按书籍 · ${questionCount} 个问题`
+            : `✦ 最近批次 · ${questionCount} 个问题`;
         let index = 0;
-        $("#questions").innerHTML = batches
-          .map(
-            (batch) =>
-              `<div class="question-group">${escapeHtml(batch.label)}${
-                batch.createdAt
-                  ? ` · ${escapeHtml(formatBatchTime(batch.createdAt))}`
+        $("#questions").innerHTML = groups
+          .map((group) => {
+            const groupTitle = `<div class="question-group">${escapeHtml(
+              group.label,
+            )}${
+              group.createdAt
+                ? ` · ${escapeHtml(formatBatchTime(group.createdAt))}`
+                : ""
+            }</div>`;
+            if (state.questionArrangement !== "book") {
+              return `<div class="question-batch-section"><div class="question-batch-group">${escapeHtml(
+                group.label,
+              )}${
+                group.createdAt
+                  ? ` · ${escapeHtml(formatBatchTime(group.createdAt))}`
                   : ""
-              }</div>${batch.items
+              }</div>${group.items
                 .map((item) => {
                   index++;
                   return renderQuestionCard(item, index);
                 })
-                .join("")}`,
-          )
+                .join("")}</div>`;
+            }
+            return `${groupTitle}${group.batches
+              .map(
+                (batch) =>
+                  `<div class="question-batch-section"><div class="question-batch-group">${escapeHtml(
+                    batch.label,
+                  )}${
+                    batch.createdAt
+                      ? ` · ${escapeHtml(formatBatchTime(batch.createdAt))}`
+                      : ""
+                  }</div>${batch.items
+                    .map((item) => {
+                      index++;
+                      return renderQuestionCard(item, index);
+                    })
+                    .join("")}</div>`,
+              )
+              .join("")}`;
+          })
           .join("");
       }
       function formatBookChapterLines(chapters) {
@@ -5077,6 +5256,13 @@
         const q = e.target.closest("[data-question]");
         if (q) openQuestion(q.dataset.question, q.dataset.book);
       });
+      $("#questionArrangement").addEventListener("click", (e) => {
+        const button = e.target.closest("[data-question-arrangement]");
+        if (!button) {
+          return;
+        }
+        setQuestionArrangement(button.dataset.questionArrangement);
+      });
       $("#chapterBookSelect").addEventListener("change", renderChapterModalTarget);
       $("#chapterDraftTitle").addEventListener("input", () => {
         if (chapterDraftBook) {
@@ -5251,6 +5437,7 @@
         );
       });
       loadShelf();
+      loadQuestionArrangement();
       loadActivity();
       loadChats();
       state.activeBookId = sortedBooksByStudy()[0]?.id || null;
