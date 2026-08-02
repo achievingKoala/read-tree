@@ -2410,10 +2410,6 @@
               <h3>全部问题</h3>
               <span class="intro-badge" id="badge"></span>
             </div>
-            <div class="question-sort" id="questionSort">
-              <button type="button" data-question-sort="batch">按批次</button>
-              <button type="button" data-question-sort="chapter">按章节</button>
-            </div>
             <div class="questions" id="questions"></div>
           </div>
         </aside>
@@ -2791,8 +2787,6 @@
         ACTIVITY_STORAGE = "readpage_activity_v1",
         CHATS_STORAGE = "readpage_chats_v1",
         NOTEBOOK_STORAGE = "readpage_notebook_v1",
-        QUESTION_SORT_STORAGE = "readpage_question_sort_v1",
-        ALL_QUESTIONS_SORT_KEY = "__all_questions__",
         CHAPTER_NEW_BOOK_VALUE = "__new_book__",
         CLIENT_ID_STORAGE = "readpage_client_id_v1",
         followUps = [
@@ -2807,7 +2801,6 @@
         activeAttempts: {},
         answerReveals: {},
         bookViews: {},
-        questionSorts: {},
         chats: {},
         notes: [],
         quota: null,
@@ -3086,31 +3079,6 @@
           })
           .map(({ bookItem }) => bookItem);
       }
-      function loadQuestionSorts() {
-        let raw = {};
-        try {
-          raw = JSON.parse(localStorage.getItem(QUESTION_SORT_STORAGE) || "{}");
-        } catch (e) {
-          raw = {};
-        }
-        if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
-          raw = {};
-        }
-        const bookIds = new Set(state.books.map((item) => item.id));
-        state.questionSorts = Object.fromEntries(
-          Object.entries(raw).filter(
-            ([bookId, mode]) =>
-              (bookIds.has(bookId) || bookId === ALL_QUESTIONS_SORT_KEY) &&
-              ["batch", "chapter"].includes(mode),
-          ),
-        );
-      }
-      function saveQuestionSorts() {
-        localStorage.setItem(
-          QUESTION_SORT_STORAGE,
-          JSON.stringify(state.questionSorts),
-        );
-      }
       function questionAnswerKey(bookId, questionId) {
         return `${bookId}::${questionId}`;
       }
@@ -3277,18 +3245,6 @@
         saveShelf();
         saveChats();
         return session;
-      }
-      function questionSortMode(bookId) {
-        return state.questionSorts[bookId] || "batch";
-      }
-      function setQuestionSortMode(bookId, mode) {
-        if (!bookId || !["batch", "chapter"].includes(mode)) {
-          return;
-        }
-        state.questionSorts[bookId] = mode;
-        saveQuestionSorts();
-        renderQuestions();
-        renderView();
       }
       function loadChats() {
         let raw = {};
@@ -3760,175 +3716,172 @@
           )
           .join("");
       }
-      function chapterSortValue(question) {
-        const chapter = Number(question.chapter);
-        if (Number.isInteger(chapter) && chapter >= 0) {
-          return chapter;
+      function questionActivityTimeValue(bookId, question) {
+        const questionTime = Math.max(
+          activityTimeValue(question),
+          activityTimeValue({ updatedAt: question.batchCreatedAt }),
+        );
+        return attemptsForQuestion(bookId, question.id).reduce(
+          (latest, { session }) =>
+            Math.max(latest, activityTimeValue(session)),
+          questionTime,
+        );
+      }
+      function questionBatchKey(bookItem, question) {
+        if (question.batchId) {
+          return `${bookItem.id}::${question.batchId}`;
         }
-        const label = question.chapterLabel || "";
-        if (["前言", "序言"].includes(label.trim())) {
-          return 0;
-        }
-        const match = label.match(/第\s*(\d{1,4})\s*章/);
-        return match ? Number(match[1]) : 1_000_000;
+        return `${bookItem.id}::${question.chapterLabel || ""}::${
+          question.batchLabel || ""
+        }`;
       }
       function allQuestionItems() {
-        return sortedBooksByStudy().flatMap((bookItem, bookOrder) =>
+        return state.books.flatMap((bookItem) =>
           bookItem.questions.map((question) => ({
             bookItem,
-            bookOrder,
             question,
           })),
         );
       }
+      function renderQuestionCard({ bookItem, question: q }, index) {
+        const attempts = attemptsForQuestion(bookItem.id, q.id),
+          answeredCount = attempts.filter(
+            ({ session }) => session.messages.length > 1,
+          ).length,
+          completedCount = attempts.filter(
+            ({ session }) => session.completed === true,
+          ).length,
+          displayBatchLabel = (q.batchLabel || "")
+            .replace(/\s*·\s*自动生成/g, "")
+            .trim(),
+          meta = [
+            `《${bookItem.title}》`,
+            q.chapterLabel,
+            displayBatchLabel,
+            q.tag,
+          ]
+            .filter(Boolean)
+            .join(" · "),
+          answer = typeof q.answer === "string" ? q.answer.trim() : "",
+          answerVisible = isQuestionAnswerVisible(bookItem.id, q.id);
+        return `<div class="question-card-wrap"><button class="question-card ${
+          state.activeBookId === bookItem.id &&
+          state.activeQuestions[bookItem.id] === q.id
+            ? "active"
+            : ""
+        }" data-book="${escapeHtml(bookItem.id)}" data-question="${
+          q.id
+        }"><span class="question-number">${String(index).padStart(
+          2,
+          "0",
+        )}</span><strong>${escapeHtml(q.text)}</strong><small>${escapeHtml(
+          meta,
+        )}</small><span class="question-arrow">→</span>${
+          completedCount
+            ? `<span class="saved-mark completed">✓ 完成 ${completedCount} 次</span>`
+            : answeredCount
+              ? `<span class="saved-mark">● 已答 ${answeredCount} 次</span>`
+              : ""
+        }</button><div class="question-card-actions">${answer ? `<button class="question-answer-toggle ${
+          answerVisible ? "active" : ""
+        }" type="button" data-answer-question="${escapeHtml(
+          q.id,
+        )}" data-book="${escapeHtml(bookItem.id)}">${
+          answerVisible ? "收起答案" : "查看答案"
+        }</button>` : ""}${
+          answeredCount
+            ? `<button class="question-repeat" type="button" data-repeat-question="${escapeHtml(
+                q.id,
+              )}" data-book="${escapeHtml(bookItem.id)}">再答一次</button>`
+            : ""
+        }</div><button class="question-delete" type="button" data-delete-question="${escapeHtml(
+          q.id,
+        )}" data-book="${escapeHtml(bookItem.id)}" aria-label="删除问题：${escapeHtml(
+          q.text,
+        )}" title="删除问题">×</button>${
+          answer
+            ? `<div class="question-answer ${
+                answerVisible ? "active" : ""
+              }"><span>参考答案</span>${escapeHtml(answer)}</div>`
+            : ""
+        }</div>`;
+      }
       function renderQuestions() {
-        const items = allQuestionItems(),
-          groups = [],
-          sortMode = questionSortMode(ALL_QUESTIONS_SORT_KEY);
-        $("#questionSort").classList.toggle("hidden", !items.length);
-        document.querySelectorAll("[data-question-sort]").forEach((button) => {
-          const active = button.dataset.questionSort === sortMode;
-          button.classList.toggle("active", active);
-          button.setAttribute("aria-pressed", String(active));
-          button.disabled = false;
+        const batches = [];
+        allQuestionItems()
+          .map((item, originalOrder) => ({
+            ...item,
+            originalOrder,
+            activityTime: questionActivityTimeValue(
+              item.bookItem.id,
+              item.question,
+            ),
+          }))
+          .forEach((item) => {
+            const q = item.question,
+              batchLabel = q.batchLabel || "第 1 批 · 之前内容",
+              displayBatchLabel = batchLabel
+                .replace(/\s*·\s*自动生成/g, "")
+                .trim(),
+              chapterLabel = q.chapterLabel || "全书讨论",
+              key = questionBatchKey(item.bookItem, q);
+            let batch = batches.find((current) => current.key === key);
+            if (!batch) {
+              batch = {
+                key,
+                label: [
+                  `《${item.bookItem.title}》`,
+                  chapterLabel,
+                  displayBatchLabel,
+                ]
+                  .filter(Boolean)
+                  .join(" · "),
+                createdAt: q.batchCreatedAt || q.updatedAt || "",
+                activityTime: item.activityTime,
+                originalOrder: item.originalOrder,
+                items: [],
+              };
+              batches.push(batch);
+            }
+            batch.activityTime = Math.max(batch.activityTime, item.activityTime);
+            if (!batch.createdAt && (q.batchCreatedAt || q.updatedAt)) {
+              batch.createdAt = q.batchCreatedAt || q.updatedAt;
+            }
+            batch.originalOrder = Math.min(batch.originalOrder, item.originalOrder);
+            batch.items.push(item);
+          });
+        batches.forEach((batch) => {
+          batch.items.sort((a, c) => a.originalOrder - c.originalOrder);
         });
-        items.forEach(({ bookItem, bookOrder, question: q }) => {
-          const batchLabel = q.batchLabel || "第 1 批 · 之前内容",
-            displayBatchLabel = batchLabel.replace(/\s*·\s*自动生成/g, ""),
-            chapterLabel = q.chapterLabel || "全书讨论",
-            bookLabel = `《${bookItem.title}》`,
-            isChapterSort = sortMode === "chapter",
-            label = isChapterSort
-              ? `${bookLabel} · ${chapterLabel}`
-              : `${bookLabel} · ${chapterLabel} · ${displayBatchLabel}`,
-            key = isChapterSort
-              ? `${bookItem.id}::chapter::${chapterLabel}`
-              : `${bookItem.id}::${chapterLabel}::${batchLabel}`;
-          let group = groups.find((g) => g.key === key);
-          if (!group) {
-            group = {
-              key,
-              label,
-              bookOrder,
-              batchLabel,
-              chapterOrder: chapterSortValue(q),
-              createdAt: q.batchCreatedAt || "",
-              items: [],
-            };
-            groups.push(group);
+        batches.sort((a, c) => {
+          if (a.activityTime !== c.activityTime) {
+            return c.activityTime - a.activityTime;
           }
-          if (!group.createdAt && q.batchCreatedAt) {
-            group.createdAt = q.batchCreatedAt;
+          const createdDiff =
+            activityTimeValue({ updatedAt: c.createdAt }) -
+            activityTimeValue({ updatedAt: a.createdAt });
+          if (createdDiff) {
+            return createdDiff;
           }
-          group.items.push({ bookItem, question: q });
+          return a.originalOrder - c.originalOrder;
         });
-        if (sortMode === "chapter") {
-          groups.sort((a, c) => {
-            if (a.bookOrder !== c.bookOrder) {
-              return a.bookOrder - c.bookOrder;
-            }
-            if (a.chapterOrder !== c.chapterOrder) {
-              return a.chapterOrder - c.chapterOrder;
-            }
-            return a.label.localeCompare(c.label, "zh-Hans-CN");
-          });
-          groups.forEach((group) => {
-            group.items.sort((a, c) => {
-              const batchA = parseBatchNumber(a.question.batchLabel),
-                batchC = parseBatchNumber(c.question.batchLabel);
-              if (batchA !== batchC) {
-                return batchA - batchC;
-              }
-              return String(a.question.batchCreatedAt || "").localeCompare(
-                String(c.question.batchCreatedAt || ""),
-              );
-            });
-          });
-        } else {
-          groups.sort((a, c) => {
-            const batchA = parseBatchNumber(a.batchLabel),
-              batchC = parseBatchNumber(c.batchLabel);
-            if (batchA !== batchC) {
-              return batchC - batchA;
-            }
-            return String(c.createdAt).localeCompare(String(a.createdAt));
-          });
-        }
-        $("#badge").textContent = `✦ 全部 ${items.length} 个问题`;
+        const questionCount = batches.reduce(
+          (count, batch) => count + batch.items.length,
+          0,
+        );
+        $("#badge").textContent = `✦ 最近批次 · ${questionCount} 个问题`;
         let index = 0;
-        $("#questions").innerHTML = groups
+        $("#questions").innerHTML = batches
           .map(
-            (group) =>
-              `<div class="question-group">${escapeHtml(group.label)}${
-                group.createdAt
-                  ? ` · ${escapeHtml(formatBatchTime(group.createdAt))}`
+            (batch) =>
+              `<div class="question-group">${escapeHtml(batch.label)}${
+                batch.createdAt
+                  ? ` · ${escapeHtml(formatBatchTime(batch.createdAt))}`
                   : ""
-              }</div>${group.items
-                .map(({ bookItem, question: q }) => {
+              }</div>${batch.items
+                .map((item) => {
                   index++;
-                  const attempts = attemptsForQuestion(bookItem.id, q.id),
-                    answeredCount = attempts.filter(
-                      ({ session }) => session.messages.length > 1,
-                    ).length,
-                    completedCount = attempts.filter(
-                      ({ session }) => session.completed === true,
-                    ).length,
-                    displayBatchLabel = (q.batchLabel || "")
-                      .replace(/\s*·\s*自动生成/g, "")
-                      .trim(),
-                    meta = [
-                      sortMode === "chapter" ? displayBatchLabel : q.chapterLabel,
-                      q.tag,
-                    ]
-                      .filter(Boolean)
-                      .join(" · "),
-                    answer = typeof q.answer === "string" ? q.answer.trim() : "",
-                    answerVisible = isQuestionAnswerVisible(bookItem.id, q.id);
-                  return `<div class="question-card-wrap"><button class="question-card ${
-                    state.activeBookId === bookItem.id &&
-                    state.activeQuestions[bookItem.id] === q.id
-                      ? "active"
-                      : ""
-                  }" data-book="${escapeHtml(bookItem.id)}" data-question="${
-                    q.id
-                  }"><span class="question-number">${String(index).padStart(
-                    2,
-                    "0",
-                  )}</span><strong>${escapeHtml(
-                    q.text,
-                  )}</strong><small>${escapeHtml(
-                    meta,
-                  )}</small><span class="question-arrow">→</span>${
-                    completedCount
-                      ? `<span class="saved-mark completed">✓ 完成 ${completedCount} 次</span>`
-                      : answeredCount
-                        ? `<span class="saved-mark">● 已答 ${answeredCount} 次</span>`
-                        : ""
-                  }</button><div class="question-card-actions">${answer ? `<button class="question-answer-toggle ${
-                    answerVisible ? "active" : ""
-                  }" type="button" data-answer-question="${escapeHtml(
-                    q.id,
-                  )}" data-book="${escapeHtml(bookItem.id)}">${
-                    answerVisible ? "收起答案" : "查看答案"
-                  }</button>` : ""}${
-                    answeredCount
-                      ? `<button class="question-repeat" type="button" data-repeat-question="${escapeHtml(
-                          q.id,
-                        )}" data-book="${escapeHtml(bookItem.id)}">再答一次</button>`
-                      : ""
-                  }</div><button class="question-delete" type="button" data-delete-question="${escapeHtml(
-                    q.id,
-                  )}" data-book="${escapeHtml(
-                    bookItem.id,
-                  )}" aria-label="删除问题：${escapeHtml(
-                    q.text,
-                  )}" title="删除问题">×</button>${
-                    answer
-                      ? `<div class="question-answer ${
-                          answerVisible ? "active" : ""
-                        }"><span>参考答案</span>${escapeHtml(answer)}</div>`
-                      : ""
-                  }</div>`;
+                  return renderQuestionCard(item, index);
                 })
                 .join("")}`,
           )
@@ -4050,11 +4003,9 @@
         delete state.activeQuestions[b.id];
         delete state.activeAttempts[b.id];
         delete state.bookViews[b.id];
-        delete state.questionSorts[b.id];
         state.activeBookId = sortedBooksByStudy()[0]?.id || null;
         saveShelf();
         saveChats();
-        saveQuestionSorts();
         render();
         toast("图书已删除");
       }
@@ -4668,6 +4619,7 @@
             batchId,
             batchLabel,
             batchCreatedAt,
+            updatedAt: batchCreatedAt,
             generationSource: "ai",
             tag: question.tag,
             text: question.text,
@@ -5125,13 +5077,6 @@
         const q = e.target.closest("[data-question]");
         if (q) openQuestion(q.dataset.question, q.dataset.book);
       });
-      $("#questionSort").addEventListener("click", (e) => {
-        const button = e.target.closest("[data-question-sort]");
-        if (!button) {
-          return;
-        }
-        setQuestionSortMode(ALL_QUESTIONS_SORT_KEY, button.dataset.questionSort);
-      });
       $("#chapterBookSelect").addEventListener("change", renderChapterModalTarget);
       $("#chapterDraftTitle").addEventListener("input", () => {
         if (chapterDraftBook) {
@@ -5306,7 +5251,6 @@
         );
       });
       loadShelf();
-      loadQuestionSorts();
       loadActivity();
       loadChats();
       state.activeBookId = sortedBooksByStudy()[0]?.id || null;
