@@ -87,6 +87,11 @@ function sendJson(response, status, payload) {
   response.end(JSON.stringify(payload));
 }
 
+function sendSse(response, event, payload) {
+  response.write(`event: ${event}\n`);
+  response.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
 function readJson(request) {
   return new Promise((resolve, reject) => {
     let body = "";
@@ -433,6 +438,128 @@ async function callOpenRouter(messages, options = {}) {
   }
 }
 
+async function streamOpenRouter(messages, options = {}, onDelta) {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) {
+    const error = new Error("OpenRouter API Key 未配置");
+    error.publicMessage = "AI 服务尚未配置，请先设置 OPENROUTER_API_KEY";
+    throw error;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(
+    () => controller.abort(),
+    options.timeoutMs || 60_000
+  );
+
+  try {
+    const requestBody = {
+      model: options.model || process.env.OPENROUTER_MODEL || "openrouter/auto",
+      messages,
+      temperature: 0.7,
+      stream: true,
+    };
+
+    const upstream = await fetch(OPENROUTER_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": `http://localhost:${port}`,
+        "X-Title": "ReadPage AI Reading Assistant",
+      },
+      body: JSON.stringify(requestBody),
+      signal: controller.signal,
+    });
+
+    if (!upstream.ok) {
+      let upstreamMessage = "Unknown OpenRouter error";
+      try {
+        const upstreamError = await upstream.json();
+        if (typeof upstreamError?.error?.message === "string") {
+          upstreamMessage = upstreamError.error.message;
+        }
+      } catch (_error) {
+        // Keep the fallback message when OpenRouter returns a non-JSON error.
+      }
+      console.error(`OpenRouter ${upstream.status}: ${upstreamMessage}`);
+      const error = new Error(`OpenRouter returned ${upstream.status}`);
+      error.publicMessage = "AI 服务暂时不可用，请稍后重试";
+      throw error;
+    }
+
+    if (!upstream.body) {
+      const error = new Error("OpenRouter response has no stream body");
+      error.publicMessage = "AI 返回了无效内容，请重试";
+      throw error;
+    }
+
+    const reader = upstream.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let content = "";
+
+    const processPart = (part) => {
+      const lines = part.split(/\r?\n/);
+      for (const line of lines) {
+        if (!line.startsWith("data:")) {
+          continue;
+        }
+
+        const data = line.slice(5).trimStart();
+        if (!data || data === "[DONE]") {
+          continue;
+        }
+
+        let parsed = null;
+        try {
+          parsed = JSON.parse(data);
+        } catch (_error) {
+          continue;
+        }
+
+        const delta = parsed?.choices?.[0]?.delta?.content;
+        if (typeof delta === "string" && delta) {
+          content += delta;
+          onDelta(delta);
+        }
+      }
+    };
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const parts = buffer.split(/\r?\n\r?\n/);
+      buffer = parts.pop() || "";
+
+      for (const part of parts) {
+        processPart(part);
+      }
+    }
+
+    const rest = decoder.decode();
+    if (rest) {
+      buffer += rest;
+    }
+    if (buffer.trim()) {
+      processPart(buffer);
+    }
+
+    return content.trim();
+  } catch (error) {
+    if (error.name === "AbortError") {
+      error.publicMessage = "AI 请求超时，请稍后重试";
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function cleanJsonContent(content) {
   const cleaned = content
     .replace(/^```(?:json)?\s*/i, "")
@@ -514,6 +641,13 @@ function parseChatReply(content) {
   return {
     answer: requiredString(parsed.answer, "回答", 2_000),
     completed: parsed.completed === true,
+  };
+}
+
+function parseStreamChatHeader(content) {
+  const match = String(content || "").match(/COMPLETED:\s*(true|false)/i);
+  return {
+    completed: match ? match[1].toLowerCase() === "true" : false,
   };
 }
 
@@ -762,14 +896,9 @@ async function handleChat(request, response) {
     };
   });
 
-  const { result, quota } = await withQuota(
-    clientId,
-    "chat",
-    async () => {
-      const content = await callOpenRouter([
-        {
-          role: "system",
-          content: `你是耐心、简洁的中文阅读教练。
+  const systemMessage = {
+    role: "system",
+    content: `你是耐心、简洁的中文阅读教练。
 
 讨论背景：
 正在讨论《${title}》（作者：${author || "未知"}）的问题：“${question}”。
@@ -788,18 +917,120 @@ async function handleChat(request, response) {
 6. 不要虚构无法确认的书中细节，也不要主动开启当前问题之外的新话题。
 
 输出要求：
-请输出严格 JSON，不要 Markdown。
-格式为 {"answer":"给用户看的回答","completed":true|false}。
-answer 直接写给用户看，输出纯文本，不要 Markdown， 不要提到 JSON 或字段名。
-completed 表示用户是否已经把当前问题回答完整；如果你还需要继续追问或引导重读，就必须为 false。`,
-        },
-        ...messages,
-      ]);
-      return parseChatReply(content);
-    }
-  );
+第一行必须是 COMPLETED: true 或 COMPLETED: false。
+第二行必须是 ANSWER:。
+从第三行开始输出直接给用户看的纯文本回答，不要 Markdown，不要提到 COMPLETED、ANSWER 或字段名。
+COMPLETED 表示用户是否已经把当前问题回答完整；如果你还需要继续追问或引导重读，就必须为 false。`,
+  };
 
-  sendJson(response, 200, attachQuota(result, quota));
+  let answer = "";
+  let rawContent = "";
+  let headerBuffer = "";
+  let answerStarted = false;
+  let completed = false;
+  let streamStarted = false;
+
+  const startStream = () => {
+    if (streamStarted) {
+      return;
+    }
+
+    response.writeHead(200, {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-store, no-transform",
+      Connection: "keep-alive",
+    });
+    response.write("\n");
+    streamStarted = true;
+  };
+
+  const flushAnswerChunk = (chunk) => {
+    if (!chunk) {
+      return;
+    }
+
+    answer += chunk;
+    sendSse(response, "chunk", {
+      text: chunk,
+    });
+  };
+
+  const consumeDelta = (delta) => {
+    rawContent += delta;
+
+    if (answerStarted) {
+      flushAnswerChunk(delta);
+      return;
+    }
+
+    headerBuffer += delta;
+    const markerMatch = headerBuffer.match(/(?:^|\r?\n)ANSWER:\s*(?:\r?\n)?/i);
+    if (!markerMatch || markerMatch.index === undefined) {
+      return;
+    }
+
+    const beforeAnswer = headerBuffer.slice(0, markerMatch.index);
+    const parsedHeader = parseStreamChatHeader(beforeAnswer);
+    completed = parsedHeader.completed;
+    answerStarted = true;
+    flushAnswerChunk(
+      headerBuffer.slice(markerMatch.index + markerMatch[0].length)
+    );
+    headerBuffer = "";
+  };
+
+  let quota = null;
+  try {
+    const quotaResult = await withQuota(clientId, "chat", async () => {
+      startStream();
+      await streamOpenRouter([
+        systemMessage,
+        ...messages,
+      ], {}, consumeDelta);
+    });
+    quota = quotaResult.quota;
+  } catch (error) {
+    if (response.headersSent) {
+      sendSse(response, "error", {
+        error: error.publicMessage || "AI 服务请求失败，请稍后重试",
+      });
+      response.end();
+      return;
+    }
+    throw error;
+  }
+
+  if (!answerStarted && rawContent) {
+    const parsedHeader = parseStreamChatHeader(rawContent);
+    completed = parsedHeader.completed;
+    flushAnswerChunk(
+      rawContent
+        .replace(/COMPLETED:\s*(true|false)\s*/i, "")
+        .replace(/ANSWER:\s*/i, "")
+        .trim()
+    );
+  }
+
+  if (!answer.trim()) {
+    sendSse(response, "error", {
+      error: "AI 返回了无效内容，请重试",
+    });
+    response.end();
+    return;
+  }
+
+  sendSse(
+    response,
+    "done",
+    attachQuota(
+      {
+        answer: answer.trim(),
+        completed,
+      },
+      quota
+    )
+  );
+  response.end();
 }
 
 async function handleQuota(request, response) {

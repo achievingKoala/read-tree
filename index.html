@@ -4457,6 +4457,106 @@
           clearTimeout(timer);
         }
       }
+      async function streamChatFetch(payload, onChunk) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 75_000);
+        try {
+          const response = await fetch("/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              ...(payload || {}),
+              clientId: ensureClientId(),
+            }),
+            signal: controller.signal,
+          });
+          if (!response.ok) {
+            let data = {};
+            try {
+              data = await response.json();
+            } catch (_error) {
+              throw new Error("服务器返回了无法解析的内容");
+            }
+            throw new Error(data.error || "AI 服务请求失败");
+          }
+          if (!response.body) {
+            throw new Error("浏览器不支持流式响应");
+          }
+
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+          let donePayload = null;
+
+          const handleEvent = (rawEvent) => {
+            const lines = rawEvent.split(/\r?\n/);
+            let eventName = "message";
+            const dataLines = [];
+            lines.forEach((line) => {
+              if (line.startsWith("event:")) {
+                eventName = line.slice(6).trim();
+              } else if (line.startsWith("data:")) {
+                dataLines.push(line.slice(5).trimStart());
+              }
+            });
+            if (!dataLines.length) {
+              return;
+            }
+
+            let data = null;
+            try {
+              data = JSON.parse(dataLines.join("\n"));
+            } catch (_error) {
+              return;
+            }
+
+            if (eventName === "chunk") {
+              onChunk(typeof data.text === "string" ? data.text : "");
+            } else if (eventName === "done") {
+              donePayload = data;
+            } else if (eventName === "error") {
+              throw new Error(data.error || "AI 服务请求失败");
+            }
+          };
+
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) {
+              break;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+            const events = buffer.split(/\r?\n\r?\n/);
+            buffer = events.pop() || "";
+            events.forEach(handleEvent);
+          }
+
+          const rest = decoder.decode();
+          if (rest) {
+            buffer += rest;
+          }
+          if (buffer.trim()) {
+            handleEvent(buffer);
+          }
+
+          if (!donePayload) {
+            throw new Error("AI 流式响应中断，请重试");
+          }
+
+          applyQuotaPayload(donePayload);
+          return donePayload;
+        } catch (error) {
+          if (error.name === "AbortError") {
+            throw new Error("AI 请求超时，请稍后重试");
+          }
+          if (error instanceof TypeError) {
+            throw new Error("无法连接服务器，请确认前后端已启动");
+          }
+          throw error;
+        } finally {
+          clearTimeout(timer);
+        }
+      }
       async function send(text) {
         const value = text.trim(),
           b = book(),
@@ -4488,15 +4588,24 @@
           messageHTML({ role: "ai", text: "" }, true, false),
         );
         const thinkingElement = $("#messages").lastElementChild;
+        const thinkingBubble = thinkingElement.querySelector(".bubble");
+        let streamedAnswer = "";
         $("#messages").scrollTop = $("#messages").scrollHeight;
         try {
-          const data = await apiFetch("/api/chat", {
-            book: { title: b.title, author: b.author || "" },
-            chapter: q.chapter || null,
-            chapterLabel: q.chapterLabel || "",
-            question: q.text,
-            messages: pendingMessages,
-          });
+          const data = await streamChatFetch(
+            {
+              book: { title: b.title, author: b.author || "" },
+              chapter: q.chapter || null,
+              chapterLabel: q.chapterLabel || "",
+              question: q.text,
+              messages: pendingMessages,
+            },
+            (chunk) => {
+              streamedAnswer += chunk;
+              thinkingBubble.textContent = streamedAnswer;
+              $("#messages").scrollTop = $("#messages").scrollHeight;
+            },
+          );
           if (typeof data.answer !== "string" || !data.answer.trim()) {
             throw new Error("AI 返回了无效回复，请重试");
           }
