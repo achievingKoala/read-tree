@@ -1414,6 +1414,25 @@
         background: var(--soft);
       }
 
+      .chat-share-btn {
+        min-height: 26px;
+        padding: 5px 9px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        color: #4d5268;
+        background: #fff;
+        font-size: 11px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .chat-share-btn:hover,
+      .chat-share-btn.active {
+        color: var(--primary);
+        border-color: #dcd8ff;
+        background: var(--soft);
+      }
+
       .chat-topic p {
         margin: 5px 0 0;
         font-size: 13px;
@@ -1518,6 +1537,80 @@
 
       .collect-message.collected {
         cursor: default;
+      }
+
+      .share-message-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        width: fit-content;
+        margin-bottom: 6px;
+        padding: 4px 8px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: #72758a;
+        background: #fff;
+        font-size: 10px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .message.user .share-message-toggle {
+        justify-self: end;
+      }
+
+      .share-message-toggle.selected {
+        color: var(--primary);
+        border-color: #d8d3ff;
+        background: var(--soft);
+      }
+
+      .share-selection-bar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 11px 18px;
+        border-top: 1px solid var(--line);
+        background: #fbfbfe;
+      }
+
+      .share-selection-bar span {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .share-selection-actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .share-selection-actions button,
+      .share-download {
+        min-height: 32px;
+        padding: 7px 11px;
+        border-radius: 9px;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+
+      .share-selection-actions .secondary-btn {
+        padding: 7px 11px;
+      }
+
+      .share-preview-btn,
+      .share-download {
+        border: 0;
+        color: #fff;
+        background: var(--primary);
+        text-decoration: none;
+      }
+
+      .share-preview-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
       }
 
       .thinking {
@@ -1829,6 +1922,38 @@
         font-weight: 700;
       }
 
+      .share-dialog {
+        width: min(520px, calc(100% - 28px));
+      }
+
+      .share-modal-body {
+        display: grid;
+        gap: 14px;
+      }
+
+      .share-preview-frame {
+        overflow: hidden;
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        background: #f7f7fb;
+      }
+
+      .share-preview-frame img {
+        display: block;
+        width: 100%;
+        height: auto;
+      }
+
+      .share-canvas {
+        display: none;
+      }
+
+      .share-modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 9px;
+      }
+
       .chapter-book-fields {
         display: grid;
         grid-template-columns: 1fr 1fr;
@@ -2123,6 +2248,19 @@
           opacity: 1;
         }
 
+        .chat-topic-head {
+          flex-wrap: wrap;
+        }
+
+        .share-selection-bar {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .share-selection-actions {
+          justify-content: flex-end;
+        }
+
         .chapter-picker-row,
         .chapter-editor {
           grid-template-columns: 1fr 1fr;
@@ -2336,6 +2474,10 @@
 
         .bubble {
           max-width: 87%;
+        }
+
+        .share-selection-actions button {
+          flex: 1;
         }
 
         .suggestions {
@@ -2557,6 +2699,13 @@
                   </strong>
                   <button
                     type="button"
+                    class="chat-share-btn"
+                    id="shareChatBtn"
+                  >
+                    分享
+                  </button>
+                  <button
+                    type="button"
                     class="chat-repeat-btn"
                     id="repeatQuestionBtn"
                   >
@@ -2566,6 +2715,26 @@
                 <p id="activeQuestion"></p>
               </div>
               <div class="messages" id="messages"></div>
+              <div class="share-selection-bar hidden" id="shareSelectionBar">
+                <span id="shareSelectionCount">已选择 0 条消息</span>
+                <div class="share-selection-actions">
+                  <button
+                    type="button"
+                    class="secondary-btn"
+                    id="cancelShareSelectBtn"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    class="share-preview-btn"
+                    id="previewShareBtn"
+                    disabled
+                  >
+                    预览分享图
+                  </button>
+                </div>
+              </div>
               <div class="suggestions" id="suggestions"></div>
               <form class="composer" id="composer">
                 <textarea
@@ -2814,6 +2983,34 @@
         </div>
       </form>
     </dialog>
+    <dialog class="share-dialog" id="shareDialog">
+      <div class="modal-head">
+        <h2>对话分享图</h2>
+        <button class="close-btn" id="closeShareDialog" aria-label="关闭">
+          ×
+        </button>
+      </div>
+      <div class="modal-body share-modal-body">
+        <div class="share-preview-frame">
+          <img id="sharePreviewImage" alt="对话分享图预览" />
+        </div>
+        <canvas
+          class="share-canvas"
+          id="shareCanvas"
+          width="1080"
+          height="1440"
+          aria-hidden="true"
+        ></canvas>
+        <div class="share-modal-actions">
+          <button type="button" class="secondary-btn" id="reselectShareBtn">
+            重新选择
+          </button>
+          <a class="share-download" id="downloadShareImage" href="#" download>
+            下载图片
+          </a>
+        </div>
+      </div>
+    </dialog>
     <div class="toast" id="toast" role="status"></div>
 
     <script>
@@ -2840,6 +3037,9 @@
         questionArrangement: "recent",
         chats: {},
         notes: [],
+        shareSelecting: false,
+        selectedShareMessages: [],
+        shareImageUrl: "",
         quota: null,
         quotaEnabled: null,
         busy: false,
@@ -4206,6 +4406,7 @@
           $("#chatView").classList.remove("active");
           $("#chatView .chat-topic").classList.add("hidden");
           $("#backBtn").classList.add("hidden");
+          setShareSelecting(false, false);
           $("#subtitle").textContent = state.generating
             ? "AI 正在生成第一批问题"
             : "问题尚未生成";
@@ -4218,6 +4419,9 @@
         $("#questionIdle").classList.toggle("hidden", chatting);
         $("#chatView .chat-topic").classList.toggle("hidden", !chatting);
         $("#backBtn").classList.toggle("hidden", !chatting);
+        if (!chatting) {
+          setShareSelecting(false, false);
+        }
         $("#subtitle").textContent = chatting
           ? "你的每段讨论都会自动保存"
           : state.generating
@@ -4226,6 +4430,7 @@
         if (chatting) restoreChat(qid);
       }
       function openQuestion(qid, bookId = state.activeBookId) {
+        setShareSelecting(false, false);
         const b = state.books.find((item) => item.id === bookId);
         if (!b) return;
         const q = b.questions.find((x) => x.id === qid);
@@ -4256,6 +4461,7 @@
         setTimeout(() => $("#input").focus(), 100);
       }
       function repeatQuestion(qid, bookId = state.activeBookId) {
+        setShareSelecting(false, false);
         const b = state.books.find((item) => item.id === bookId);
         if (!b) return;
         state.activeBookId = b.id;
@@ -4268,6 +4474,7 @@
         toast(`已开始第 ${session.attemptNumber} 次作答`);
       }
       function switchAttempt(attemptId) {
+        setShareSelecting(false, false);
         const b = book(),
           qid = b ? state.activeQuestions[b.id] : "";
         if (!b || !qid || !attemptId) return;
@@ -4363,6 +4570,7 @@
           )
           .join("");
         $("#messages").scrollTop = $("#messages").scrollHeight;
+        updateShareSelectionBar();
         renderSuggestions(
           session.first
             ? ["我还没想好，给我一点提示", "先看看这个问题的背景"]
@@ -4381,13 +4589,30 @@
         completed = false,
       ) {
         const collected = !thinking && isMessageCollected(message.id);
+        const shareSelectable =
+          !thinking &&
+          state.shareSelecting &&
+          typeof message.id === "string" &&
+          !!message.id;
+        const shareSelected =
+          shareSelectable && state.selectedShareMessages.includes(message.id);
         const bubbleClasses = ["bubble"];
         if (!thinking && completed && message.role === "ai") {
           bubbleClasses.push("completed");
         }
         return `<div class="message ${message.role}">${
           message.role === "ai" ? '<div class="avatar">✦</div>' : ""
-        }<div class="message-body"><div class="${bubbleClasses.join(" ")}">${
+        }<div class="message-body">${
+          shareSelectable
+            ? `<button class="share-message-toggle ${
+                shareSelected ? "selected" : ""
+              }" type="button" data-share-message="${escapeHtml(
+                message.id,
+              )}" aria-pressed="${shareSelected ? "true" : "false"}">${
+                shareSelected ? "✓ 已选择" : "○ 选择"
+              }</button>`
+            : ""
+        }<div class="${bubbleClasses.join(" ")}">${
           thinking
             ? '<span class="thinking"><i></i><i></i><i></i></span>'
             : escapeHtml(message.text)
@@ -4410,6 +4635,290 @@
           }
         }
         return -1;
+      }
+      function currentChatContext() {
+        const b = book(),
+          qid = b ? state.activeQuestions[b.id] : "",
+          session = b && qid ? activeSession(b.id, qid) : null,
+          question = b?.questions?.find((item) => item.id === qid) || null;
+        return { b, qid, question, session };
+      }
+      function validShareMessageIds(session) {
+        if (!session || !Array.isArray(session.messages)) {
+          return [];
+        }
+        return session.messages
+          .filter(
+            (message) =>
+              message &&
+              typeof message.id === "string" &&
+              message.id &&
+              typeof message.text === "string",
+          )
+          .map((message) => message.id);
+      }
+      function syncSelectedShareMessages() {
+        const { session } = currentChatContext(),
+          validIds = validShareMessageIds(session);
+        state.selectedShareMessages = state.selectedShareMessages.filter((id) =>
+          validIds.includes(id),
+        );
+      }
+      function updateShareSelectionBar() {
+        const bar = $("#shareSelectionBar");
+        if (!bar) {
+          return;
+        }
+        syncSelectedShareMessages();
+        const count = state.selectedShareMessages.length;
+        bar.classList.toggle("hidden", !state.shareSelecting);
+        $("#shareChatBtn").classList.toggle("active", state.shareSelecting);
+        $("#shareSelectionCount").textContent = `已选择 ${count} 条消息`;
+        $("#previewShareBtn").disabled = count === 0;
+      }
+      function setShareSelecting(selecting, rerender = true) {
+        state.shareSelecting = selecting;
+        if (!selecting) {
+          state.selectedShareMessages = [];
+        }
+        updateShareSelectionBar();
+        if (rerender) {
+          const { qid } = currentChatContext();
+          if (qid) {
+            restoreChat(qid);
+          }
+        }
+      }
+      function toggleShareMessage(messageId) {
+        const { session } = currentChatContext(),
+          validIds = validShareMessageIds(session);
+        if (!state.shareSelecting || !validIds.includes(messageId)) {
+          return;
+        }
+        if (state.selectedShareMessages.includes(messageId)) {
+          state.selectedShareMessages = state.selectedShareMessages.filter(
+            (id) => id !== messageId,
+          );
+        } else {
+          state.selectedShareMessages.push(messageId);
+        }
+        const { qid } = currentChatContext();
+        if (qid) {
+          restoreChat(qid);
+        }
+      }
+      function selectedShareMessages() {
+        const { session } = currentChatContext();
+        if (!session) {
+          return [];
+        }
+        return state.selectedShareMessages
+          .map((id) => session.messages.find((message) => message.id === id))
+          .filter(Boolean);
+      }
+      function canvasRoundRect(ctx, x, y, width, height, radius) {
+        const r = Math.min(radius, width / 2, height / 2);
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + width - r, y);
+        ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+        ctx.lineTo(x + width, y + height - r);
+        ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+        ctx.lineTo(x + r, y + height);
+        ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+      }
+      function fillCanvasRoundRect(ctx, x, y, width, height, radius, color) {
+        canvasRoundRect(ctx, x, y, width, height, radius);
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
+      function canvasLines(ctx, text, maxWidth) {
+        const lines = [];
+        String(text || "")
+          .split(/\r?\n/)
+          .forEach((paragraph) => {
+            let current = "";
+            Array.from(paragraph || " ").forEach((char) => {
+              const next = current + char;
+              if (ctx.measureText(next).width > maxWidth && current) {
+                lines.push(current);
+                current = char;
+              } else {
+                current = next;
+              }
+            });
+            lines.push(current);
+          });
+        return lines;
+      }
+      function drawWrappedCanvasText(
+        ctx,
+        text,
+        x,
+        y,
+        maxWidth,
+        lineHeight,
+      ) {
+        const lines = canvasLines(ctx, text, maxWidth);
+        let nextY = y;
+        for (let index = 0; index < lines.length; index += 1) {
+          ctx.fillText(lines[index], x, nextY);
+          nextY += lineHeight;
+        }
+        return { y: nextY, lineCount: lines.length };
+      }
+      function measureShareCard(ctx, bookTitle, questionText, messages, width) {
+        const padding = 70,
+          contentWidth = width - padding * 2;
+        ctx.font = "700 28px PingFang SC, Microsoft YaHei, sans-serif";
+        const questionLines = canvasLines(ctx, questionText, contentWidth - 56),
+          questionHeight = Math.max(150, questionLines.length * 38 + 86);
+        ctx.font = "800 44px PingFang SC, Microsoft YaHei, sans-serif";
+        const titleLines = canvasLines(ctx, `《${bookTitle}》`, contentWidth),
+          titleHeight = Math.max(58, titleLines.length * 58);
+        ctx.font = "500 27px PingFang SC, Microsoft YaHei, sans-serif";
+        const messageHeights = messages.map((message) => {
+          const lineCount = canvasLines(ctx, message.text, contentWidth - 68).length;
+          return Math.max(92, lineCount * 36 + 74);
+        });
+        const messagesHeight = messageHeights.reduce(
+          (total, heightValue) => total + heightValue + 22,
+          0,
+        );
+        return {
+          contentWidth,
+          messageHeights,
+          questionHeight,
+          titleHeight,
+          height: Math.max(
+            1440,
+            184 + titleHeight + 12 + 52 + questionHeight + 46 + messagesHeight + 135,
+          ),
+        };
+      }
+      function drawShareCard() {
+        const { b, question, session } = currentChatContext(),
+          messages = selectedShareMessages();
+        if (!b || !question || !session || !messages.length) {
+          toast("请先选择要分享的消息");
+          return "";
+        }
+        const canvas = $("#shareCanvas"),
+          ctx = canvas.getContext("2d"),
+          width = canvas.width,
+          padding = 70,
+          layout = measureShareCard(ctx, b.title, question.text, messages, width),
+          contentWidth = layout.contentWidth;
+        canvas.height = layout.height;
+        const height = canvas.height;
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = "#f5f6fa";
+        ctx.fillRect(0, 0, width, height);
+        fillCanvasRoundRect(ctx, 38, 38, width - 76, height - 76, 34, "#ffffff");
+
+        ctx.fillStyle = "#6259e8";
+        ctx.font = "800 34px PingFang SC, Microsoft YaHei, sans-serif";
+        ctx.fillText("读页 · 对话分享", padding, 112);
+
+        ctx.fillStyle = "#171927";
+        ctx.font = "800 44px PingFang SC, Microsoft YaHei, sans-serif";
+        let cursorY = 184;
+        const titleResult = drawWrappedCanvasText(
+          ctx,
+          `《${b.title}》`,
+          padding,
+          cursorY,
+          contentWidth,
+          58,
+        );
+        cursorY = titleResult.y + 12;
+
+        ctx.fillStyle = "#74798d";
+        ctx.font = "700 24px PingFang SC, Microsoft YaHei, sans-serif";
+        const meta = `第 ${session.attemptNumber || 1} 次作答`;
+        ctx.fillText(meta, padding, cursorY);
+        cursorY += 52;
+
+        fillCanvasRoundRect(
+          ctx,
+          padding,
+          cursorY,
+          contentWidth,
+          layout.questionHeight,
+          24,
+          "#efedff",
+        );
+        ctx.fillStyle = "#4941cc";
+        ctx.font = "800 24px PingFang SC, Microsoft YaHei, sans-serif";
+        ctx.fillText("正在讨论", padding + 28, cursorY + 42);
+        ctx.fillStyle = "#26283a";
+        ctx.font = "700 28px PingFang SC, Microsoft YaHei, sans-serif";
+        drawWrappedCanvasText(
+          ctx,
+          question.text,
+          padding + 28,
+          cursorY + 86,
+          contentWidth - 56,
+          38,
+        );
+        cursorY += layout.questionHeight + 46;
+
+        for (let index = 0; index < messages.length; index += 1) {
+          const message = messages[index],
+            isUser = message.role === "user",
+            label = isUser ? "我的想法" : "读页",
+            bubbleHeight = layout.messageHeights[index];
+          fillCanvasRoundRect(
+            ctx,
+            padding,
+            cursorY,
+            contentWidth,
+            bubbleHeight,
+            22,
+            isUser ? "#6259e8" : "#f0f1f6",
+          );
+          ctx.fillStyle = isUser ? "rgba(255,255,255,0.78)" : "#74798d";
+          ctx.font = "800 22px PingFang SC, Microsoft YaHei, sans-serif";
+          ctx.fillText(label, padding + 34, cursorY + 40);
+          ctx.fillStyle = isUser ? "#ffffff" : "#393b4c";
+          ctx.font = "500 27px PingFang SC, Microsoft YaHei, sans-serif";
+          drawWrappedCanvasText(
+            ctx,
+            message.text,
+            padding + 34,
+            cursorY + 84,
+            contentWidth - 68,
+            36,
+          );
+          cursorY += bubbleHeight + 22;
+        }
+
+        ctx.fillStyle = "#a1a4b2";
+        ctx.font = "800 24px PingFang SC, Microsoft YaHei, sans-serif";
+        ctx.fillText("读页 · 阅读助手", padding, height - 70);
+        return canvas.toDataURL("image/png");
+      }
+      function shareImageFilename() {
+        const now = new Date(),
+          pad = (value) => String(value).padStart(2, "0"),
+          stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(
+            now.getDate(),
+          )}-${pad(now.getHours())}${pad(now.getMinutes())}`;
+        return `读页-对话分享-${stamp}.png`;
+      }
+      function openShareDialog() {
+        const imageUrl = drawShareCard();
+        if (!imageUrl) {
+          return;
+        }
+        state.shareImageUrl = imageUrl;
+        $("#sharePreviewImage").src = imageUrl;
+        $("#downloadShareImage").href = imageUrl;
+        $("#downloadShareImage").download = shareImageFilename();
+        $("#shareDialog").showModal();
       }
       function renderSuggestions(items) {
         $("#suggestions").innerHTML = items
@@ -4558,6 +5067,7 @@
         }
       }
       async function send(text) {
+        setShareSelecting(false, false);
         const value = text.trim(),
           b = book(),
           qid = state.activeQuestions[b.id],
@@ -4655,6 +5165,7 @@
         }
       }
       function switchBook(id) {
+        setShareSelecting(false, false);
         state.activeBookId = id;
         render();
       }
@@ -5384,9 +5895,36 @@
         }
       });
       $("#messages").addEventListener("click", (e) => {
+        const shareButton = e.target.closest("[data-share-message]");
+        if (shareButton) {
+          toggleShareMessage(shareButton.dataset.shareMessage);
+          return;
+        }
         const button = e.target.closest("[data-collect-message]");
         if (button && !button.disabled) {
           collectMessage(button.dataset.collectMessage);
+        }
+      });
+      $("#shareChatBtn").addEventListener("click", () => {
+        setShareSelecting(!state.shareSelecting);
+        if (!state.shareSelecting) {
+          return;
+        }
+        toast("请选择要分享的消息");
+      });
+      $("#cancelShareSelectBtn").addEventListener("click", () => {
+        setShareSelecting(false);
+      });
+      $("#previewShareBtn").addEventListener("click", openShareDialog);
+      $("#closeShareDialog").addEventListener("click", () => {
+        $("#shareDialog").close();
+      });
+      $("#reselectShareBtn").addEventListener("click", () => {
+        $("#shareDialog").close();
+      });
+      $("#shareDialog").addEventListener("click", (e) => {
+        if (e.target === $("#shareDialog")) {
+          $("#shareDialog").close();
         }
       });
       $("#repeatQuestionBtn").addEventListener("click", () => {
@@ -5400,6 +5938,7 @@
         switchAttempt(e.target.value);
       });
       $("#backBtn").addEventListener("click", () => {
+        setShareSelecting(false, false);
         state.bookViews[state.activeBookId] = false;
         renderView();
       });
