@@ -1540,23 +1540,25 @@
       }
 
       .share-message-toggle {
-        display: inline-flex;
-        align-items: center;
-        gap: 5px;
-        width: fit-content;
-        margin-bottom: 6px;
-        padding: 4px 8px;
+        display: grid;
+        place-items: center;
+        flex: 0 0 26px;
+        width: 26px;
+        height: 26px;
+        margin-top: 5px;
+        padding: 0;
         border: 1px solid var(--line);
-        border-radius: 999px;
+        border-radius: 7px;
         color: #72758a;
         background: #fff;
-        font-size: 10px;
+        font-size: 14px;
         font-weight: 800;
+        line-height: 1;
         cursor: pointer;
       }
 
       .message.user .share-message-toggle {
-        justify-self: end;
+        order: 2;
       }
 
       .share-message-toggle.selected {
@@ -4529,7 +4531,10 @@
         render();
         toast("问题已删除");
       }
-      function restoreChat(qid) {
+      function restoreChat(qid, options = {}) {
+        const scrollToBottom = options.scrollToBottom !== false,
+          messageList = $("#messages"),
+          previousScrollTop = messageList.scrollTop;
         const q = book().questions.find((x) => x.id === qid),
           session = activeSession(state.activeBookId, qid);
         if (!q || !session) {
@@ -4559,7 +4564,7 @@
           completed && !hasCompletedMessage
             ? lastAiMessageIndex(session.messages)
             : -1;
-        $("#messages").innerHTML = session.messages
+        messageList.innerHTML = session.messages
           .map((message, index) =>
             messageHTML(
               message,
@@ -4569,7 +4574,9 @@
             ),
           )
           .join("");
-        $("#messages").scrollTop = $("#messages").scrollHeight;
+        messageList.scrollTop = scrollToBottom
+          ? messageList.scrollHeight
+          : previousScrollTop;
         updateShareSelectionBar();
         renderSuggestions(
           session.first
@@ -4600,19 +4607,24 @@
         if (!thinking && completed && message.role === "ai") {
           bubbleClasses.push("completed");
         }
+        const isAiMessage = message.role === "ai";
+        const shareButtonLabel = shareSelected ? "取消选择这条消息" : "选择这条消息";
+        const shareToggle = shareSelectable
+          ? `<button class="share-message-toggle ${
+              shareSelected ? "selected" : ""
+            }" type="button" data-share-message="${escapeHtml(
+              message.id,
+            )}" aria-pressed="${
+              shareSelected ? "true" : "false"
+            }" aria-label="${shareButtonLabel}" title="${
+              shareSelected ? "取消选择" : "选择"
+            }">${
+              shareSelected ? "✓" : ""
+            }</button>`
+          : "";
         return `<div class="message ${message.role}">${
-          message.role === "ai" ? '<div class="avatar">✦</div>' : ""
-        }<div class="message-body">${
-          shareSelectable
-            ? `<button class="share-message-toggle ${
-                shareSelected ? "selected" : ""
-              }" type="button" data-share-message="${escapeHtml(
-                message.id,
-              )}" aria-pressed="${shareSelected ? "true" : "false"}">${
-                shareSelected ? "✓ 已选择" : "○ 选择"
-              }</button>`
-            : ""
-        }<div class="${bubbleClasses.join(" ")}">${
+          isAiMessage ? '<div class="avatar">✦</div>' : ""
+        }${isAiMessage ? shareToggle : ""}<div class="message-body"><div class="${bubbleClasses.join(" ")}">${
           thinking
             ? '<span class="thinking"><i></i><i></i><i></i></span>'
             : escapeHtml(message.text)
@@ -4626,7 +4638,7 @@
                 collected ? "✓ 已收录" : "＋ 收录"
               }</button>`
             : ""
-        }</div></div>`;
+        }</div>${isAiMessage ? "" : shareToggle}</div>`;
       }
       function lastAiMessageIndex(messages) {
         for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -4685,7 +4697,7 @@
         if (rerender) {
           const { qid } = currentChatContext();
           if (qid) {
-            restoreChat(qid);
+            restoreChat(qid, { scrollToBottom: false });
           }
         }
       }
@@ -4704,7 +4716,7 @@
         }
         const { qid } = currentChatContext();
         if (qid) {
-          restoreChat(qid);
+          restoreChat(qid, { scrollToBottom: false });
         }
       }
       function selectedShareMessages() {
