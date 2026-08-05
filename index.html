@@ -1005,6 +1005,42 @@
         overflow: hidden;
       }
 
+      .workspace-book-questions {
+        display: none;
+        height: 100%;
+        min-height: 0;
+        overflow-y: auto;
+        padding-right: 4px;
+        scrollbar-width: thin;
+      }
+
+      .workspace-book-questions.active {
+        display: block;
+      }
+
+      .workspace-book-questions-head {
+        position: sticky;
+        z-index: 3;
+        top: 0;
+        margin-bottom: 12px;
+        padding: 2px 0 10px;
+        background: var(--panel);
+      }
+
+      .workspace-book-questions-head span {
+        display: block;
+        margin-bottom: 4px;
+        color: var(--primary-dark);
+        font-size: 11px;
+        font-weight: 800;
+      }
+
+      .workspace-book-questions-head h3 {
+        margin: 0;
+        font-size: 20px;
+        line-height: 1.25;
+      }
+
       .question-view {
         min-height: 0;
       }
@@ -1079,6 +1115,25 @@
         min-height: 0;
         overflow-y: auto;
         padding-right: 3px;
+        scrollbar-width: thin;
+      }
+
+      .questions.book-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        overflow-y: auto;
+        padding-right: 0;
+      }
+
+      .question-book-menu {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-height: 0;
+        max-height: 100%;
+        overflow-y: auto;
+        padding-right: 2px;
         scrollbar-width: thin;
       }
 
@@ -2029,16 +2084,57 @@
       }
 
       .question-group {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
         grid-column: 1/-1;
+        width: 100%;
+        border: 0;
+        background: transparent;
         margin: 15px 0 0;
+        padding: 0;
         color: #9295a5;
         font-size: 10px;
         font-weight: 800;
         letter-spacing: 0.12em;
+        text-align: left;
+        cursor: default;
+      }
+
+      .question-book-menu .question-group {
+        margin: 0;
+        padding: 8px 9px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.74);
+        letter-spacing: 0.04em;
+        line-height: 1.35;
       }
 
       .question-group:first-child {
         margin-top: 0;
+      }
+
+      .question-group-toggle {
+        cursor: pointer;
+      }
+
+      .question-group-toggle:hover {
+        color: var(--primary-dark);
+      }
+
+      .question-group-toggle.active {
+        color: var(--primary-dark);
+        border-color: #c5c0fa;
+        background: var(--soft);
+      }
+
+      .question-group-icon {
+        color: var(--primary);
+        font-size: 13px;
+        letter-spacing: 0;
+        line-height: 1;
       }
 
       .question-batch-group {
@@ -2686,6 +2782,10 @@
                 </p>
               </div>
             </div>
+            <div
+              class="workspace-book-questions"
+              id="workspaceBookQuestions"
+            ></div>
             <div class="chat-view" id="chatView">
               <div class="chat-topic hidden">
                 <div class="chat-topic-head">
@@ -3036,6 +3136,7 @@
         activeAttempts: {},
         answerReveals: {},
         bookViews: {},
+        bookQuestionExpands: {},
         questionArrangement: "recent",
         chats: {},
         notes: [],
@@ -3330,6 +3431,7 @@
         const key = questionAnswerKey(bookId, questionId);
         state.answerReveals[key] = state.answerReveals[key] !== true;
         renderQuestions();
+        renderWorkspaceBookQuestions();
       }
       function attemptKey(bookId, questionId, attemptId) {
         return `${bookId}::${questionId}::${attemptId}`;
@@ -3915,6 +4017,7 @@
         $("#questionView").classList.add("hidden");
         $("#questionIdle").classList.add("hidden");
         $("#emptyState").classList.remove("hidden");
+        renderWorkspaceBookQuestions([]);
         $("#chatView").classList.remove("active");
         $("#chatView .chat-topic").classList.add("hidden");
         $("#workspace").classList.remove("chatting");
@@ -3993,8 +4096,12 @@
           return;
         }
         state.questionArrangement = arrangement;
+        if (arrangement !== "book") {
+          state.bookQuestionExpands = {};
+        }
         saveQuestionArrangement();
         renderQuestions();
+        renderView();
       }
       function renderQuestionArrangementControls(hasQuestions) {
         $("#questionArrangement").classList.toggle("hidden", !hasQuestions);
@@ -4210,6 +4317,66 @@
           })
           .filter((group) => group.items.length);
       }
+      function isBookQuestionGroupExpanded(bookId) {
+        return state.bookQuestionExpands[bookId] === true;
+      }
+      function activeBookQuestionGroup(groups = renderBookQuestionGroups()) {
+        return (
+          groups.find((group) => isBookQuestionGroupExpanded(group.key)) || null
+        );
+      }
+      function toggleBookQuestionGroup(bookId) {
+        const expanded = isBookQuestionGroupExpanded(bookId);
+        state.bookQuestionExpands = {};
+        if (!expanded) {
+          state.bookQuestionExpands[bookId] = true;
+          if (state.books.some((item) => item.id === bookId)) {
+            state.activeBookId = bookId;
+          }
+        }
+        renderQuestions();
+        renderShelf();
+        renderView();
+      }
+      function renderWorkspaceBookQuestions(groups = renderBookQuestionGroups()) {
+        const panel = $("#workspaceBookQuestions");
+        if (!panel) {
+          return;
+        }
+        const activeGroup = activeBookQuestionGroup(groups);
+        if (
+          state.questionArrangement !== "book" ||
+          !activeGroup ||
+          !activeGroup.items.length
+        ) {
+          panel.innerHTML = "";
+          panel.classList.remove("active");
+          return;
+        }
+        let index = groups
+          .slice(0, groups.indexOf(activeGroup))
+          .reduce((count, group) => count + group.items.length, 0);
+        panel.innerHTML = `<div class="workspace-book-questions-head"><span>按书籍浏览</span><h3>${escapeHtml(
+          activeGroup.label,
+        )}</h3></div>${activeGroup.batches
+          .map(
+            (batch) =>
+              `<div class="question-batch-section"><div class="question-batch-group">${escapeHtml(
+                batch.label,
+              )}${
+                batch.createdAt
+                  ? ` · ${escapeHtml(formatBatchTime(batch.createdAt))}`
+                  : ""
+              }</div>${batch.items
+                .map((item) => {
+                  index++;
+                  return renderQuestionCard(item, index);
+                })
+                .join("")}</div>`,
+          )
+          .join("")}`;
+        panel.classList.add("active");
+      }
       function renderQuestions() {
         const groups =
             state.questionArrangement === "book"
@@ -4225,46 +4392,42 @@
             ? `✦ 按书籍 · ${questionCount} 个问题`
             : `✦ 最近批次 · ${questionCount} 个问题`;
         let index = 0;
+        $("#questions").classList.toggle(
+          "book-menu",
+          state.questionArrangement === "book",
+        );
+        if (state.questionArrangement === "book") {
+          const activeGroup =
+              activeBookQuestionGroup(groups),
+            bookMenu = groups
+              .map((group) => {
+                const active = activeGroup?.key === group.key;
+                return `<button class="question-group question-group-toggle ${
+                  active ? "active" : ""
+                }" type="button" data-toggle-book-questions="${escapeHtml(
+                  group.key,
+                )}" aria-expanded="${active}"><span>${escapeHtml(
+                  group.label,
+                )}</span><span class="question-group-icon" aria-hidden="true">›</span></button>`;
+              })
+              .join("");
+          $("#questions").innerHTML = `<div class="question-book-menu">${bookMenu}</div>`;
+          return;
+        }
         $("#questions").innerHTML = groups
           .map((group) => {
-            const groupTitle = `<div class="question-group">${escapeHtml(
+            return `<div class="question-batch-section"><div class="question-batch-group">${escapeHtml(
               group.label,
             )}${
               group.createdAt
                 ? ` · ${escapeHtml(formatBatchTime(group.createdAt))}`
                 : ""
-            }</div>`;
-            if (state.questionArrangement !== "book") {
-              return `<div class="question-batch-section"><div class="question-batch-group">${escapeHtml(
-                group.label,
-              )}${
-                group.createdAt
-                  ? ` · ${escapeHtml(formatBatchTime(group.createdAt))}`
-                  : ""
-              }</div>${group.items
-                .map((item) => {
-                  index++;
-                  return renderQuestionCard(item, index);
-                })
-                .join("")}</div>`;
-            }
-            return `${groupTitle}${group.batches
-              .map(
-                (batch) =>
-                  `<div class="question-batch-section"><div class="question-batch-group">${escapeHtml(
-                    batch.label,
-                  )}${
-                    batch.createdAt
-                      ? ` · ${escapeHtml(formatBatchTime(batch.createdAt))}`
-                      : ""
-                  }</div>${batch.items
-                    .map((item) => {
-                      index++;
-                      return renderQuestionCard(item, index);
-                    })
-                    .join("")}</div>`,
-              )
-              .join("")}`;
+            }</div>${group.items
+              .map((item) => {
+                index++;
+                return renderQuestionCard(item, index);
+              })
+              .join("")}</div>`;
           })
           .join("");
       }
@@ -4384,6 +4547,7 @@
         delete state.activeQuestions[b.id];
         delete state.activeAttempts[b.id];
         delete state.bookViews[b.id];
+        delete state.bookQuestionExpands[b.id];
         state.activeBookId = sortedBooksByStudy()[0]?.id || null;
         saveShelf();
         saveChats();
@@ -4405,6 +4569,7 @@
           $("#questionView").classList.add("hidden");
           $("#questionIdle").classList.add("hidden");
           $("#emptyState").classList.remove("hidden");
+          renderWorkspaceBookQuestions([]);
           $("#chatView").classList.remove("active");
           $("#chatView .chat-topic").classList.add("hidden");
           $("#backBtn").classList.add("hidden");
@@ -4414,22 +4579,33 @@
             : "问题尚未生成";
           return;
         }
+        const browsingBookQuestions =
+          state.questionArrangement === "book" &&
+          !!activeBookQuestionGroup() &&
+          !state.generating;
+        const activeChatting = chatting && !browsingBookQuestions;
         $("#emptyState").classList.add("hidden");
         $("#questionView").classList.remove("hidden");
-        $("#workspace").classList.toggle("chatting", chatting);
-        $("#chatView").classList.toggle("active", chatting);
-        $("#questionIdle").classList.toggle("hidden", chatting);
-        $("#chatView .chat-topic").classList.toggle("hidden", !chatting);
-        $("#backBtn").classList.toggle("hidden", !chatting);
-        if (!chatting) {
+        $("#workspace").classList.toggle("chatting", activeChatting);
+        $("#chatView").classList.toggle("active", activeChatting);
+        $("#questionIdle").classList.toggle(
+          "hidden",
+          activeChatting || browsingBookQuestions,
+        );
+        $("#chatView .chat-topic").classList.toggle("hidden", !activeChatting);
+        $("#backBtn").classList.toggle("hidden", !activeChatting);
+        if (!activeChatting) {
           setShareSelecting(false, false);
         }
-        $("#subtitle").textContent = chatting
+        renderWorkspaceBookQuestions();
+        $("#subtitle").textContent = activeChatting
           ? "你的每段讨论都会自动保存"
-          : state.generating
-            ? "AI 正在生成新的问题批次"
-            : "从一个感兴趣的问题开始";
-        if (chatting) restoreChat(qid);
+          : browsingBookQuestions
+            ? "选择这本书下的一个问题开始讨论"
+            : state.generating
+              ? "AI 正在生成新的问题批次"
+              : "从一个感兴趣的问题开始";
+        if (activeChatting) restoreChat(qid);
       }
       function openQuestion(qid, bookId = state.activeBookId) {
         setShareSelecting(false, false);
@@ -4440,6 +4616,7 @@
         state.activeBookId = b.id;
         state.activeQuestions[b.id] = qid;
         state.bookViews[b.id] = true;
+        state.bookQuestionExpands = {};
         const latest = latestAttemptForQuestion(b.id, qid);
         if (latest) {
           state.activeAttempts[b.id] = latest.session.attemptId;
@@ -4467,6 +4644,7 @@
         const b = state.books.find((item) => item.id === bookId);
         if (!b) return;
         state.activeBookId = b.id;
+        state.bookQuestionExpands = {};
         const session = createQuestionAttempt(b, qid);
         if (!session) return;
         renderQuestions();
@@ -5861,6 +6039,19 @@
         }
       });
       $("#questions").addEventListener("click", (e) => {
+        const bookQuestionToggle = e.target.closest(
+          "[data-toggle-book-questions]",
+        );
+        if (bookQuestionToggle) {
+          toggleBookQuestionGroup(bookQuestionToggle.dataset.toggleBookQuestions);
+          return;
+        }
+        handleQuestionCardClick(e);
+      });
+      $("#workspaceBookQuestions").addEventListener("click", (e) => {
+        handleQuestionCardClick(e);
+      });
+      function handleQuestionCardClick(e) {
         const deleteButton = e.target.closest("[data-delete-question]");
         if (deleteButton) {
           deleteQuestion(
@@ -5887,7 +6078,7 @@
         }
         const q = e.target.closest("[data-question]");
         if (q) openQuestion(q.dataset.question, q.dataset.book);
-      });
+      }
       $("#questionArrangement").addEventListener("click", (e) => {
         const button = e.target.closest("[data-question-arrangement]");
         if (!button) {
