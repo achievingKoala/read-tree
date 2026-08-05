@@ -3165,6 +3165,7 @@
         activeAttempts: {},
         answerReveals: {},
         bookViews: {},
+        chatOrigins: {},
         bookQuestionExpands: {},
         questionArrangement: "recent",
         chats: {},
@@ -4612,8 +4613,9 @@
         const browsingBookQuestions =
           state.questionArrangement === "book" &&
           !!activeBookQuestionGroup() &&
-          !state.generating;
-        const activeChatting = chatting && !browsingBookQuestions;
+          !state.generating &&
+          !chatting;
+        const activeChatting = chatting;
         $("#emptyState").classList.add("hidden");
         $("#questionView").classList.remove("hidden");
         $("#workspace").classList.toggle("chatting", activeChatting);
@@ -4637,7 +4639,7 @@
               : "从一个感兴趣的问题开始和书对话";
         if (activeChatting) restoreChat(qid);
       }
-      function openQuestion(qid, bookId = state.activeBookId) {
+      function openQuestion(qid, bookId = state.activeBookId, origin = "global") {
         setShareSelecting(false, false);
         const b = state.books.find((item) => item.id === bookId);
         if (!b) return;
@@ -4646,7 +4648,12 @@
         state.activeBookId = b.id;
         state.activeQuestions[b.id] = qid;
         state.bookViews[b.id] = true;
-        state.bookQuestionExpands = {};
+        state.chatOrigins[b.id] = origin;
+        if (origin === "book") {
+          state.bookQuestionExpands = { [b.id]: true };
+        } else {
+          state.bookQuestionExpands = {};
+        }
         const latest = latestAttemptForQuestion(b.id, qid);
         if (latest) {
           state.activeAttempts[b.id] = latest.session.attemptId;
@@ -6112,9 +6119,9 @@
         handleQuestionCardClick(e);
       });
       $("#workspaceBookQuestions").addEventListener("click", (e) => {
-        handleQuestionCardClick(e);
+        handleQuestionCardClick(e, "book");
       });
-      function handleQuestionCardClick(e) {
+      function handleQuestionCardClick(e, origin = "global") {
         const deleteButton = e.target.closest("[data-delete-question]");
         if (deleteButton) {
           deleteQuestion(
@@ -6140,7 +6147,7 @@
           return;
         }
         const q = e.target.closest("[data-question]");
-        if (q) openQuestion(q.dataset.question, q.dataset.book);
+        if (q) openQuestion(q.dataset.question, q.dataset.book, origin);
       }
       $("#questionArrangement").addEventListener("click", (e) => {
         const button = e.target.closest("[data-question-arrangement]");
@@ -6205,7 +6212,13 @@
       });
       $("#backBtn").addEventListener("click", () => {
         setShareSelecting(false, false);
+        const origin = state.chatOrigins[state.activeBookId];
         state.bookViews[state.activeBookId] = false;
+        if (origin === "book") {
+          state.bookQuestionExpands = { [state.activeBookId]: true };
+        } else {
+          state.bookQuestionExpands = {};
+        }
         renderView();
       });
       $("#composer").addEventListener("submit", (e) => {
