@@ -3,9 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="多图书 AI 阅读助手互动演示" />
+    <meta
+      name="description"
+      content="书语是一个和书对话的阅读工具，从一个问题开始，和书对话。"
+    />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
-    <title>读页 · 阅读助手</title>
+    <title>书语 · 从一个问题开始，和书对话</title>
     <style>
       :root {
         --bg: #f5f6fa;
@@ -83,6 +86,28 @@
         align-items: center;
         gap: 11px;
         font-weight: 800;
+      }
+
+      .brand-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        min-width: 0;
+      }
+
+      .brand-name {
+        color: var(--ink);
+        font-size: 17px;
+        line-height: 1;
+        white-space: nowrap;
+      }
+
+      .brand-slogan {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.2;
+        white-space: nowrap;
       }
 
       .brand-mark {
@@ -2617,7 +2642,11 @@
                 stroke="currentColor"
                 stroke-width="1.7"
               /></svg></span
-          >读页
+          >
+          <span class="brand-copy">
+            <span class="brand-name">书语</span>
+            <span class="brand-slogan">从一个问题开始，和书对话</span>
+          </span>
         </div>
         <div class="top-actions">
           <!-- <div class="status">
@@ -2754,7 +2783,7 @@
             </div>
             <div class="header-actions">
               <button class="chapter-btn" id="openChapter">
-                <span>✦</span><span>生成问题</span></button
+                <span>✦</span><span>生成对话问题</span></button
               ><button class="ghost-btn hidden" id="backBtn">
                 <span>←</span><span>返回问题</span>
               </button>
@@ -2764,12 +2793,12 @@
             <div class="empty-state hidden" id="emptyState">
               <div>
                 <span class="empty-icon">⌛</span>
-                <h3>等待第一批问题</h3>
+                <h3>等待第一批对话问题</h3>
                 <p>
-                  可以直接生成问题。先在弹窗里选择已有图书，或新建一本书后再选择章节。
+                  先选一本想读的书，让它问你一个可以开始对话的问题。
                 </p>
                 <button class="chapter-btn" id="emptyChapter">
-                  <span>✦</span><span>生成第一批问题</span>
+                  <span>✦</span><span>生成第一批对话问题</span>
                 </button>
               </div>
             </div>
@@ -4007,11 +4036,12 @@
         $("#coverAuthor").textContent = "点击 + 添加一本书";
         $("#coverSymbol").textContent = "＋";
         $("#bookDescription").textContent =
-          "书架还是空的，先添加图书，再选择章节生成阅读问题。";
+          "书架还是空的。先添加一本想读的书，再让它问你一个对话问题。";
         $("#progressText").textContent = "0%";
         $("#progressBar").style.width = "0%";
-        $("#workspaceTitle").textContent = "先添加一本书";
-        $("#subtitle").textContent = "添加图书后，再开始生成和讨论问题";
+        $("#workspaceTitle").textContent = "打开一本书，先和它聊一句";
+        $("#subtitle").textContent =
+          "添加图书后，从一个问题开始和书对话";
         $("#badge").textContent = "";
         $("#questions").innerHTML = "";
         $("#questionView").classList.add("hidden");
@@ -4575,8 +4605,8 @@
           $("#backBtn").classList.add("hidden");
           setShareSelecting(false, false);
           $("#subtitle").textContent = state.generating
-            ? "AI 正在生成第一批问题"
-            : "问题尚未生成";
+            ? "AI 正在生成第一批对话问题"
+            : "还没有对话问题";
           return;
         }
         const browsingBookQuestions =
@@ -4603,8 +4633,8 @@
           : browsingBookQuestions
             ? "选择这本书下的一个问题开始讨论"
             : state.generating
-              ? "AI 正在生成新的问题批次"
-              : "从一个感兴趣的问题开始";
+              ? "AI 正在生成新的对话问题"
+              : "从一个感兴趣的问题开始和书对话";
         if (activeChatting) restoreChat(qid);
       }
       function openQuestion(qid, bookId = state.activeBookId) {
@@ -5011,7 +5041,7 @@
 
         ctx.fillStyle = "#6259e8";
         ctx.font = "800 34px PingFang SC, Microsoft YaHei, sans-serif";
-        ctx.fillText("读页 · 对话分享", padding, 112);
+        ctx.fillText("书语 · 对话分享", padding, 112);
 
         ctx.fillStyle = "#171927";
         ctx.font = "800 44px PingFang SC, Microsoft YaHei, sans-serif";
@@ -5059,7 +5089,7 @@
         for (let index = 0; index < messages.length; index += 1) {
           const message = messages[index],
             isUser = message.role === "user",
-            label = isUser ? "我的想法" : "读页",
+            label = isUser ? "我的想法" : "书语",
             bubbleHeight = layout.messageHeights[index];
           fillCanvasRoundRect(
             ctx,
@@ -5088,7 +5118,7 @@
 
         ctx.fillStyle = "#a1a4b2";
         ctx.font = "800 24px PingFang SC, Microsoft YaHei, sans-serif";
-        ctx.fillText("读页 · 阅读助手", padding, height - 70);
+        ctx.fillText("书语 · 从一个问题开始，和书对话", padding, height - 70);
         return canvas.toDataURL("image/png");
       }
       function shareImageFilename() {
@@ -5097,7 +5127,7 @@
           stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(
             now.getDate(),
           )}-${pad(now.getHours())}${pad(now.getMinutes())}`;
-        return `读页-对话分享-${stamp}.png`;
+        return `书语-对话分享-${stamp}.png`;
       }
       function openShareDialog() {
         const imageUrl = drawShareCard();
@@ -5477,7 +5507,7 @@
       function updateGenerationButtonLabels() {
         const b = book(),
           hasQuestions = !!b?.questions?.length,
-          idleLabel = hasQuestions ? "再生成一批" : "生成第一批问题";
+          idleLabel = hasQuestions ? "再生成一批对话问题" : "生成第一批对话问题";
         $("#openChapter span:last-child").textContent = state.generating
           ? "生成中…"
           : idleLabel;
@@ -5563,7 +5593,7 @@
         e.target.reset();
         clearBookChapterPreview();
         render();
-        toast("图书已添加，可单独生成问题");
+        toast("图书已添加，可单独生成对话问题");
       }
       function setBookChapterFetchBusy(active) {
         $("#fetchBookChaptersBtn").disabled = active;
@@ -5663,14 +5693,14 @@
         const b = state.books.find((item) => item.id === bookId);
         if (!b) return;
         if (!b.chapters.length) {
-          toast("请先通过按钮获取章节目录后再生成问题");
+          toast("请先通过按钮获取章节目录后再生成对话问题");
           return;
         }
         setGenerationBusy(true);
         try {
           const chapterInfo = nextChapterForBatch(b);
           if (!chapterInfo) {
-            throw new Error("请先通过按钮获取章节目录后再生成问题");
+            throw new Error("请先通过按钮获取章节目录后再生成对话问题");
           }
           const context = chapterInfo.summary || "",
             contextSource = context ? "ai-summary" : "none",
@@ -5705,7 +5735,7 @@
         $("#chapterContext").value = "";
         $("#chapterContext").dataset.aiSummary = "";
         $("#contextNote").textContent =
-          "先获取章节目录，再选择章节生成问题。";
+          "先获取章节目录，再选择章节生成对话问题。";
         $("#contextNote").classList.remove("ai-draft");
         renderChapterWarning({
           chapterConfidence: "",
