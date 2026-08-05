@@ -398,7 +398,7 @@ async function callOpenRouter(messages, options = {}) {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "HTTP-Referer": `http://localhost:${port}`,
-        "X-Title": "ReadPage AI Reading Assistant",
+        "X-Title": "ChatBook Reading Companion",
       },
       body: JSON.stringify(requestBody),
       signal: controller.signal,
@@ -466,7 +466,7 @@ async function streamOpenRouter(messages, options = {}, onDelta) {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
         "HTTP-Referer": `http://localhost:${port}`,
-        "X-Title": "ReadPage AI Reading Assistant",
+        "X-Title": "ChatBook Reading Companion",
       },
       body: JSON.stringify(requestBody),
       signal: controller.signal,
@@ -1170,5 +1170,5 @@ server.on("error", (error) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`读页已启动：http://localhost:${port}`);
+  console.log(`书语已启动：http://localhost:${port}`);
 });

@@ -227,6 +227,29 @@
         opacity: 0.55;
       }
 
+      .quota-purchase {
+        height: 30px;
+        padding: 0 10px;
+        border: 1px solid #d7d3fb;
+        border-radius: 8px;
+        color: var(--primary-dark);
+        background: #f3f1ff;
+        font-size: 12px;
+        font-weight: 800;
+        white-space: nowrap;
+        cursor: pointer;
+        transition:
+          border-color 0.2s ease,
+          background 0.2s ease,
+          transform 0.2s ease;
+      }
+
+      .quota-purchase:hover {
+        border-color: #bdb8f5;
+        background: var(--soft);
+        transform: translateY(-1px);
+      }
+
       .layout {
         display: grid;
         flex: 1;
@@ -2512,6 +2535,11 @@
           min-width: 0;
         }
 
+        .quota-purchase {
+          flex: 1 1 100%;
+          white-space: normal;
+        }
+
         .records-page {
           padding: 20px 15px;
         }
@@ -2673,6 +2701,13 @@
             />
             <button class="quota-submit" id="redeemBtn" type="submit">
               兑换
+            </button>
+            <button
+              class="quota-purchase"
+              id="xianyuPurchaseBtn"
+              type="button"
+            >
+              闲鱼购买额度
             </button>
           </form>
           <button class="records-nav" id="notebookNav">笔记本</button>
@@ -3146,6 +3181,7 @@
 
     <script>
       const PRESETS = {};
+      const XIANYU_PURCHASE_URL = "https://m.tb.cn/h.8fMwvE6?tk=cdhfgy6b5Pr";
       const STORAGE = "readpage_shelf_v2",
         ACTIVITY_STORAGE = "readpage_activity_v1",
         CHATS_STORAGE = "readpage_chats_v1",
@@ -3247,6 +3283,16 @@
         count.innerHTML = `额度 <strong>${escapeHtml(
           state.quota.remainingUses ?? 0,
         )}</strong>`;
+      }
+      function openXianyuLink() {
+        if (
+          !XIANYU_PURCHASE_URL ||
+          XIANYU_PURCHASE_URL === "TODO_XIANYU_URL"
+        ) {
+          toast("闲鱼链接还未配置，请先替换 XIANYU_PURCHASE_URL");
+          return;
+        }
+        window.open(XIANYU_PURCHASE_URL, "_blank", "noopener,noreferrer");
       }
       async function refreshQuota() {
         try {
@@ -6229,6 +6275,7 @@
         e.preventDefault();
         redeemActivationCodeFromInput();
       });
+      $("#xianyuPurchaseBtn").addEventListener("click", openXianyuLink);
       $("#input").addEventListener("input", (e) => {
         $("#sendBtn").disabled = state.busy || !e.target.value.trim();
         e.target.style.height = "auto";
